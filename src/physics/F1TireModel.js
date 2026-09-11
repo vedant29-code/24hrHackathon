@@ -45,6 +45,10 @@ export class F1TireModel {
     this.currentCompoundKey = 'SOFT';
     this.activeCompound = this.compounds.SOFT;
 
+    // Road surface grip multiplier — independent of tire compound.
+    // Models track condition (rubbered-in asphalt, dust, wet patches, etc).
+    this.surfaceFriction = 1.0;
+
     // Real-time telemetry metrics
     this.telemetry = {
       downforceN: 0,
@@ -66,6 +70,10 @@ export class F1TireModel {
 
   setDRS(active) {
     this.drsActive = active;
+  }
+
+  setSurfaceFriction(scale) {
+    this.surfaceFriction = scale;
   }
 
   /**
@@ -95,7 +103,7 @@ export class F1TireModel {
     // 1. Calculate friction coefficient de-rated by vertical load sensitivity
     const fz = Math.max(verticalLoad, 200.0);
     const loadRatio = this.pacejka.refLoad / fz;
-    const muPeak = this.activeCompound.mu0 * Math.pow(loadRatio, this.pacejka.loadSensitivityExp);
+    const muPeak = this.activeCompound.mu0 * this.surfaceFriction * Math.pow(loadRatio, this.pacejka.loadSensitivityExp);
     this.telemetry.effectiveMu = muPeak;
 
     // 2. Peak lateral force D

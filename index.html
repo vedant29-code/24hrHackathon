@@ -117,8 +117,8 @@
 
       <!-- Target Speed Slider -->
       <div class="control-row">
-        <label for="slider-target-speed"><span>TARGET SPEED (STRAIGHTS)</span><span class="ctrl-val"><span id="txt-target-speed">240</span> km/h</span></label>
-        <input type="range" id="slider-target-speed" min="80" max="360" step="5" value="240">
+        <label for="slider-target-speed"><span>TARGET SPEED (STRAIGHTS)</span><span class="ctrl-val"><span id="txt-target-speed">350</span> km/h</span></label>
+        <input type="range" id="slider-target-speed" min="80" max="360" step="5" value="350">
       </div>
 
       <!-- Tire Compound Selection -->
@@ -129,13 +129,6 @@
         <button id="btn-compound-hard" class="eng-btn" title="Hard Slick (C1): Low grip μ=1.45 (Fails earlier!)">HARD (C1)</button>
       </div>
 
-      <!-- Vehicle Model Selector -->
-      <div class="control-section-label">VEHICLE CONFIG</div>
-      <div class="toggle-row no-margin">
-        <button id="btn-veh-f1" class="eng-btn active-toggle">VOXEL F1 CAR</button>
-        <button id="btn-veh-sphere" class="eng-btn">VOXEL CUBE</button>
-      </div>
-
       <div class="control-row">
         <label for="slider-friction"><span>ASPHALT FRICTION SCALE</span><span class="ctrl-val" id="txt-friction">1.00</span></label>
         <input type="range" id="slider-friction" min="0.2" max="2.0" step="0.05" value="1.0">
@@ -143,24 +136,6 @@
       <div class="control-row">
         <label for="slider-timescale"><span>TIME SCALE</span><span class="ctrl-val"><span id="txt-timescale">1.00</span>x</span></label>
         <input type="range" id="slider-timescale" min="0.1" max="2.0" step="0.1" value="1.0">
-      </div>
-
-      <!-- Action Buttons -->
-      <div class="btn-grid">
-        <button id="btn-smart-braking" class="eng-btn active-toggle" title="Intelligent cornering deceleration based on upcoming spline curvature [B]">RACE CRUISE [B]</button>
-        <button id="btn-auto-accelerate" class="eng-btn" title="Accelerate with 100% WOT without corner braking until friction limit causes crash [A]">ATTACK (100% WOT) [A]</button>
-        <button id="btn-impulse" class="eng-btn" title="Exceed cornering grip with turbo boost [SPACE]">EXCEED BOOST [SPACE]</button>
-        <button id="btn-reset" class="eng-btn" title="Reset car back to the start/finish line [R]">RESET TO START [R]</button>
-        <button id="btn-toggle-line" class="eng-btn" title="Toggle invisible line visibility [L]">SHOW LINE [L]</button>
-        <button id="btn-spawn-10" class="eng-btn" title="Spawn 10 dynamic physics voxel bodies along circuit">SPAWN +10 VOXELS</button>
-      </div>
-
-      <!-- View & Debug Toggles -->
-      <div class="toggle-row">
-        <button id="btn-cam-follow" class="eng-btn active-toggle">CAM: ONBOARD CHASE</button>
-        <button id="btn-cam-orbit" class="eng-btn">CAM: ORBIT</button>
-        <button id="btn-toggle-vectors" class="eng-btn active-toggle">VECTORS: ON</button>
-        <button id="btn-toggle-wireframe" class="eng-btn">WIREFRAME: OFF</button>
       </div>
     </div>
   </div>

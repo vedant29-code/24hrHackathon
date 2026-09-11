@@ -6,6 +6,7 @@ import { RigidBody } from './physics/RigidBody.js';
 import { F1Car } from './entities/F1Car.js';
 import { PhysicsEngine } from './physics/PhysicsEngine.js';
 import { TelemetryHUD } from './ui/TelemetryHUD.js';
+import { loadVoxelCarFile, buildVoxelCarFromGLB } from './entities/VoxelCarLoader.js';
 
 class PhysicsTrackApp {
   constructor() {
@@ -21,6 +22,7 @@ class PhysicsTrackApp {
     this.hud = new TelemetryHUD(this.physics, this);
 
     this.bindWindowResize();
+    this.bindVoxelHandoff();
 
     this.lastTime = performance.now();
     this.fpsHistory = [];
@@ -109,7 +111,7 @@ class PhysicsTrackApp {
     this.camTargetLook = new THREE.Vector3();
   }
 
-  createLeadVehicle(type) {
+  createLeadVehicle(type, voxelCarData = this.pendingVoxelCarData || null) {
     if (this.leadBody) {
       this.scene.remove(this.leadBody.mesh);
       this.scene.remove(this.leadBody.vectorArrow);
@@ -137,11 +139,16 @@ class PhysicsTrackApp {
         yaw: startYaw,
         position: new THREE.Vector3(startPoint.x, startY, startPoint.z),
         velocity: vel,
-        trackSpline: this.trackSpline
+        trackSpline: this.trackSpline,
+        voxelCarData
       });
       if (this.leadBody.suspension) {
         this.leadBody.suspension.setSmartBraking(true);
-        this.leadBody.suspension.setTargetSpeedKmh(240.0);
+        // 350 km/h is the target the driver attempts on straights — the
+        // cruise-mode governor above still brakes for corner curvature, so
+        // this is a target, not a floor: the "driving rules" win when they
+        // conflict with reaching it.
+        this.leadBody.suspension.setTargetSpeedKmh(350.0);
       }
     } else {
       this.leadBody = new RigidBody({
@@ -163,6 +170,52 @@ class PhysicsTrackApp {
       this.scene.add(this.leadBody.sparkPoints);
     }
     this.physics.addBody(this.leadBody);
+  }
+
+  async loadVoxelCarFromFile(file) {
+    const data = await loadVoxelCarFile(file);
+    if (data.__glb) {
+      return this.loadGLBCar(data.gltf);
+    }
+    this.pendingVoxelCarData = data;
+    this.createLeadVehicle('f1', data);
+    const b = this.leadBody?.voxelBuild;
+    if (!b) throw new Error('No usable voxel cells in that file.');
+    return b;
+  }
+
+  loadGLBCar(gltf) {
+    if (this.leadBody) {
+      this.scene.remove(this.leadBody.mesh);
+      this.scene.remove(this.leadBody.vectorArrow);
+      if (this.leadBody.sparkPoints) this.scene.remove(this.leadBody.sparkPoints);
+      this.physics.removeBody(this.leadBody);
+    }
+    const built = buildVoxelCarFromGLB(gltf, this.leadBody?.length || 5.2);
+    const startSample = this.trackSpline.lut[0];
+    const startTangent = startSample.tangent;
+    const startYaw = Math.atan2(startTangent.x, startTangent.z);
+    const vel = new THREE.Vector3(Math.sin(startYaw) * 44.44, 0, Math.cos(startYaw) * 44.44);
+
+    this.leadBody = new F1Car({
+      id: 'glb-car',
+      yaw: startYaw,
+      position: new THREE.Vector3(startSample.point.x, 0.36, startSample.point.z),
+      velocity: vel,
+      trackSpline: this.trackSpline,
+    });
+    this.leadBody.voxelBuild = built;
+    this.leadBody.mesh.clear();
+    this.leadBody.mesh.add(built.group);
+    this.leadBody.mass = built.mass;
+    this.leadBody.invMass = 1 / built.mass;
+
+    this.leadBody.setVectorsVisible(this.vectorsVisible);
+    this.scene.add(this.leadBody.mesh);
+    this.scene.add(this.leadBody.vectorArrow);
+    if (this.leadBody.sparkPoints) this.scene.add(this.leadBody.sparkPoints);
+    this.physics.addBody(this.leadBody);
+    return built;
   }
 
   setTargetSpeedKmh(kmh) {
@@ -247,7 +300,7 @@ class PhysicsTrackApp {
     if (this.leadBody.suspension) {
       this.leadBody.suspension.setAutoAccelerate(false);
       this.leadBody.suspension.setSmartBraking(true);
-      this.leadBody.suspension.setTargetSpeedKmh(240.0);
+      this.leadBody.suspension.setTargetSpeedKmh(350.0);
       this.leadBody.suspension.physicsStatus = {
         isViolated: false,
         isOffTrack: false,
@@ -263,8 +316,8 @@ class PhysicsTrackApp {
       };
     }
     if (this.hud && this.hud.sliderTargetSpeed) {
-      this.hud.sliderTargetSpeed.value = '240';
-      if (this.hud.txtTargetSpeed) this.hud.txtTargetSpeed.textContent = '240';
+      this.hud.sliderTargetSpeed.value = '350';
+      if (this.hud.txtTargetSpeed) this.hud.txtTargetSpeed.textContent = '350';
     }
     if (this.hud && this.hud.btnAutoAccelerate) {
       this.hud.btnAutoAccelerate.classList.remove('active-toggle');
@@ -402,6 +455,37 @@ class PhysicsTrackApp {
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(width, height);
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
+    });
+  }
+
+  /**
+   * Live handoff from the photo-to-3D tool's "Send to Track" button. It
+   * opens this page in a new tab and posts the voxel-car JSON straight
+   * across (postMessage works cross-origin even though the two apps run on
+   * different dev-server ports) — no file save/reopen step, the car just
+   * appears already swapped in and driving.
+   */
+  bindVoxelHandoff() {
+    window.addEventListener('message', (ev) => {
+      const msg = ev.data;
+      if (!msg || msg.type !== 'voxel-car-handoff' || !msg.payload) return;
+      try {
+        this.pendingVoxelCarData = msg.payload;
+        this.createLeadVehicle('f1', msg.payload);
+        const b = this.leadBody?.voxelBuild;
+        if (this.hud?.btnVehF1) {
+          this.hud.btnVehF1.classList.add('active-toggle');
+          this.hud.btnVehSphere?.classList.remove('active-toggle');
+        }
+        if (this.hud?.voxelCarStatusRow && this.hud?.txtVoxelCarStatus && b) {
+          this.hud.voxelCarStatusRow.style.display = 'block';
+          this.hud.txtVoxelCarStatus.textContent =
+            `VOXEL CAR LOADED (LIVE FROM PHOTO-TO-3D) — ${b.mass.toFixed(0)} kg · Cd*A ${(b.dragCoefficient * b.frontalArea).toFixed(2)} m² · solidity ${(b.solidity * 100).toFixed(0)}%`;
+        }
+        ev.source?.postMessage({ type: 'voxel-car-handoff-ack', ok: true }, ev.origin || '*');
+      } catch (err) {
+        ev.source?.postMessage({ type: 'voxel-car-handoff-ack', ok: false, error: err.message }, ev.origin || '*');
+      }
     });
   }
 }

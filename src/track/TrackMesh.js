@@ -13,6 +13,82 @@ import * as THREE from 'three';
  * - Toggleable Dashed Voxel Racing Line: Center spline guide tiles.
  * - Checkered Start/Finish Voxel Grid at slice 0.
  */
+/**
+ * Procedurally paints a tileable high-frequency asphalt texture: base grey
+ * with speckled aggregate grain and subtle tread darkening streaks so the
+ * continuous road plate doesn't read as a flat color under lighting.
+ */
+function createAsphaltTexture() {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#1b1d22';
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < 9000; i++) {
+    const x = Math.random() * size, y = Math.random() * size;
+    const r = Math.random() * 1.4 + 0.3;
+    const shade = Math.random();
+    ctx.fillStyle = shade > 0.5
+      ? `rgba(90,94,102,${0.15 + Math.random() * 0.25})`
+      : `rgba(8,9,11,${0.2 + Math.random() * 0.3})`;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+  for (let i = 0; i < 40; i++) {
+    ctx.lineWidth = Math.random() * 1.5;
+    ctx.beginPath();
+    const y = Math.random() * size;
+    ctx.moveTo(0, y);
+    ctx.lineTo(size, y + (Math.random() - 0.5) * 30);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+/** Brushed-metal texture for the continuous Armco crash barrier wall. */
+function createBarrierTexture() {
+  const w = 256, h = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, '#5a5f6b');
+  grad.addColorStop(0.5, '#3a3e47');
+  grad.addColorStop(1, '#4d525d');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  for (let i = 0; i < 200; i++) {
+    ctx.lineWidth = Math.random() * 0.8;
+    const y = Math.random() * h;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+  // Corrugated horizontal Armco ridges
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = 4;
+  for (let y = 20; y < h; y += 40) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 8;
+  return tex;
+}
+
 export class TrackMesh {
   constructor(trackSpline) {
     this.spline = trackSpline;
@@ -22,11 +98,15 @@ export class TrackMesh {
     this.wireframeEnabled = false;
     this.lineVisible = false;
 
+    this.asphaltTexture = createAsphaltTexture();
+    this.barrierTexture = createBarrierTexture();
+
     // Materials tailored for crisp CAD voxel rendering with subtle specular reflections
     this.asphaltMaterial = new THREE.MeshStandardMaterial({
-      color: 0x181a1f,
-      roughness: 0.85,
-      metalness: 0.12,
+      color: 0xffffff,
+      map: this.asphaltTexture,
+      roughness: 0.9,
+      metalness: 0.08,
       wireframe: false
     });
 
@@ -45,9 +125,10 @@ export class TrackMesh {
     });
 
     this.barrierMaterial = new THREE.MeshStandardMaterial({
-      color: 0x484d59,
-      roughness: 0.4,
-      metalness: 0.8,
+      color: 0xffffff,
+      map: this.barrierTexture,
+      roughness: 0.35,
+      metalness: 0.85,
       wireframe: false
     });
 
@@ -87,12 +168,11 @@ export class TrackMesh {
     const blockLen = 2.35; // slightly overlapping for gap-free voxel surface
     const blockH = 0.20;
 
-    // 1. Asphalt Road Bed: 10 columns across 16m road (-7.2m to +7.2m)
-    const asphaltCols = 10;
-    const colWidth = 1.6;
-    const totalAsphalt = sliceCount * asphaltCols;
-    const asphaltGeo = new THREE.BoxGeometry(colWidth * 0.98, blockH, blockLen);
-    this.asphaltMesh = new THREE.InstancedMesh(asphaltGeo, this.asphaltMaterial, totalAsphalt);
+    // 1. Asphalt Road Bed: one continuous ribbon plate across the full 16m
+    // road width (-7.2m to +7.2m), instead of stitched-together column
+    // blocks — no seams, single smooth surface with a tiled asphalt texture.
+    this.asphaltMesh = this.buildRibbon(lut, sliceStep, sliceCount, this.asphaltMaterial,
+      [{ dLat: -7.2, y: 0 }, { dLat: 7.2, y: 0 }], 4.0);
     this.asphaltMesh.castShadow = true;
     this.asphaltMesh.receiveShadow = true;
 
@@ -116,14 +196,17 @@ export class TrackMesh {
     this.runoffMesh = new THREE.InstancedMesh(runoffGeo, this.runoffMaterial, totalRunoff);
     this.runoffMesh.receiveShadow = true;
 
-    // 4. Perimeter Armco Barriers: Left & Right walls at ±13.0m
-    const totalBarriers = sliceCount * 2;
-    const barrierW = 0.65;
+    // 4. Perimeter Armco Barriers: one continuous wall ribbon per side at
+    // ±13.0m instead of segmented blocks — a single unbroken crash barrier.
     const barrierH = 0.85;
-    const barrierGeo = new THREE.BoxGeometry(barrierW, barrierH, blockLen);
-    this.barrierMesh = new THREE.InstancedMesh(barrierGeo, this.barrierMaterial, totalBarriers);
-    this.barrierMesh.castShadow = true;
-    this.barrierMesh.receiveShadow = true;
+    this.barrierMeshLeft = this.buildRibbon(lut, sliceStep, sliceCount, this.barrierMaterial,
+      [{ dLat: -13.0, y: 0 }, { dLat: -13.0, y: barrierH }], 1.0);
+    this.barrierMeshRight = this.buildRibbon(lut, sliceStep, sliceCount, this.barrierMaterial,
+      [{ dLat: 13.0, y: 0 }, { dLat: 13.0, y: barrierH }], 1.0);
+    this.barrierMeshLeft.castShadow = true;
+    this.barrierMeshLeft.receiveShadow = true;
+    this.barrierMeshRight.castShadow = true;
+    this.barrierMeshRight.receiveShadow = true;
 
     // 5. Toggleable Center Dashed Voxel Racing Line: every other 2 slices
     const lineSlices = Math.floor(sliceCount / 2);
@@ -138,10 +221,8 @@ export class TrackMesh {
     const pos = new THREE.Vector3();
     const up = new THREE.Vector3(0, 1, 0);
 
-    let asphaltIdx = 0;
     let kerbIdx = 0;
     let runoffIdx = 0;
-    let barrierIdx = 0;
     let lineIdx = 0;
 
     for (let s = 0; s < sliceCount; s++) {
@@ -155,19 +236,6 @@ export class TrackMesh {
       dummy.quaternion.setFromRotationMatrix(
         new THREE.Matrix4().makeBasis(B, up, T)
       );
-
-      // A. Populate Asphalt Voxels across 10 columns
-      for (let c = 0; c < asphaltCols; c++) {
-        const dLat = -7.2 + c * colWidth + (colWidth * 0.5);
-        pos.set(
-          pt.x + B.x * dLat,
-          -blockH * 0.5, // Top surface flush at y = 0.00m
-          pt.z + B.z * dLat
-        );
-        dummy.position.copy(pos);
-        dummy.updateMatrix();
-        this.asphaltMesh.setMatrixAt(asphaltIdx++, dummy.matrix);
-      }
 
       // B. Populate Stepped Kerb Voxels (Left & Right)
       const kerbPattern = Math.floor(s / 3) % 2 === 0;
@@ -216,27 +284,6 @@ export class TrackMesh {
       dummy.updateMatrix();
       this.runoffMesh.setMatrixAt(runoffIdx++, dummy.matrix);
 
-      // D. Populate Perimeter Armco Barrier Voxels (Left & Right at ±13.0m)
-      // Left Barrier
-      pos.set(
-        pt.x + B.x * -13.0,
-        barrierH * 0.5,
-        pt.z + B.z * -13.0
-      );
-      dummy.position.copy(pos);
-      dummy.updateMatrix();
-      this.barrierMesh.setMatrixAt(barrierIdx++, dummy.matrix);
-
-      // Right Barrier
-      pos.set(
-        pt.x + B.x * 13.0,
-        barrierH * 0.5,
-        pt.z + B.z * 13.0
-      );
-      dummy.position.copy(pos);
-      dummy.updateMatrix();
-      this.barrierMesh.setMatrixAt(barrierIdx++, dummy.matrix);
-
       // E. Populate Dashed Voxel Center Line (every 2 slices)
       if (s % 2 === 0 && lineIdx < lineSlices) {
         pos.set(
@@ -250,18 +297,74 @@ export class TrackMesh {
       }
     }
 
-    this.asphaltMesh.instanceMatrix.needsUpdate = true;
     this.kerbMesh.instanceMatrix.needsUpdate = true;
     if (this.kerbMesh.instanceColor) this.kerbMesh.instanceColor.needsUpdate = true;
     this.runoffMesh.instanceMatrix.needsUpdate = true;
-    this.barrierMesh.instanceMatrix.needsUpdate = true;
     this.lineMesh.instanceMatrix.needsUpdate = true;
 
     this.group.add(this.asphaltMesh);
     this.group.add(this.kerbMesh);
     this.group.add(this.runoffMesh);
-    this.group.add(this.barrierMesh);
+    this.group.add(this.barrierMeshLeft);
+    this.group.add(this.barrierMeshRight);
     this.group.add(this.lineMesh);
+  }
+
+  /**
+   * Builds one continuous, gap-free ribbon mesh following the spline: a
+   * cross-section "profile" (lateral offset + height pairs) is swept along
+   * every slice and stitched into a single indexed surface — a plate, not a
+   * chain of separate blocks. `vRepeat` sets how many meters of arc length
+   * one texture tile covers, so the map doesn't stretch on long straights.
+   */
+  buildRibbon(lut, sliceStep, sliceCount, material, profile, vRepeat) {
+    const totalLut = lut.length;
+    const profileLen = profile.length;
+    const up = new THREE.Vector3(0, 1, 0);
+
+    const positions = new Float32Array(sliceCount * profileLen * 3);
+    const normals = new Float32Array(sliceCount * profileLen * 3);
+    const uvs = new Float32Array(sliceCount * profileLen * 2);
+
+    for (let s = 0; s < sliceCount; s++) {
+      const lutIdx = (s * sliceStep) % totalLut;
+      const sample = lut[lutIdx];
+      const pt = sample.point;
+      const B = sample.binormal;
+      const v = sample.s / vRepeat;
+
+      for (let p = 0; p < profileLen; p++) {
+        const prof = profile[p];
+        const vi = (s * profileLen + p);
+        positions[vi * 3] = pt.x + B.x * prof.dLat;
+        positions[vi * 3 + 1] = prof.y;
+        positions[vi * 3 + 2] = pt.z + B.z * prof.dLat;
+        normals[vi * 3] = up.x; normals[vi * 3 + 1] = up.y; normals[vi * 3 + 2] = up.z;
+        uvs[vi * 2] = p / (profileLen - 1);
+        uvs[vi * 2 + 1] = v;
+      }
+    }
+
+    const indices = [];
+    for (let s = 0; s < sliceCount; s++) {
+      const sNext = (s + 1) % sliceCount; // wrap for a closed circuit loop
+      for (let p = 0; p < profileLen - 1; p++) {
+        const a = s * profileLen + p;
+        const b = s * profileLen + p + 1;
+        const c = sNext * profileLen + p;
+        const d = sNext * profileLen + p + 1;
+        indices.push(a, c, b, b, c, d);
+      }
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+
+    return new THREE.Mesh(geo, material);
   }
 
   buildStartFinishGrid() {

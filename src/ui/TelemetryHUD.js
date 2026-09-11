@@ -52,6 +52,10 @@ export class TelemetryHUD {
     // Vehicle Config
     this.btnVehF1 = document.getElementById('btn-veh-f1');
     this.btnVehSphere = document.getElementById('btn-veh-sphere');
+    this.btnLoadVoxelCar = document.getElementById('btn-load-voxel-car');
+    this.fileVoxelCar = document.getElementById('file-voxel-car');
+    this.voxelCarStatusRow = document.getElementById('voxel-car-status');
+    this.txtVoxelCarStatus = document.getElementById('txt-voxel-car-status');
 
     // Compounds
     this.btnCompoundSoft = document.getElementById('btn-compound-soft');
@@ -88,6 +92,9 @@ export class TelemetryHUD {
       for (const b of this.physics.bodies) {
         b.friction = val;
       }
+      if (this.app.leadBody?.tireModel) {
+        this.app.leadBody.tireModel.setSurfaceFriction(val);
+      }
     });
 
     // Time Scale Slider
@@ -108,6 +115,27 @@ export class TelemetryHUD {
       this.app.switchVehicle('sphere');
       this.btnVehSphere.classList.add('active-toggle');
       this.btnVehF1.classList.remove('active-toggle');
+    });
+
+    // Load a voxel car exported from the photo-to-3D tool's "Send to Track".
+    this.btnLoadVoxelCar?.addEventListener('click', () => this.fileVoxelCar?.click());
+    this.fileVoxelCar?.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const info = await this.app.loadVoxelCarFromFile(file);
+        this.btnVehF1.classList.add('active-toggle');
+        this.btnVehSphere.classList.remove('active-toggle');
+        if (this.voxelCarStatusRow) this.voxelCarStatusRow.style.display = 'block';
+        if (this.txtVoxelCarStatus) {
+          this.txtVoxelCarStatus.textContent =
+            `VOXEL CAR LOADED — ${info.mass.toFixed(0)} kg · Cd*A ${(info.dragCoefficient * info.frontalArea).toFixed(2)} m² · solidity ${(info.solidity * 100).toFixed(0)}%`;
+        }
+      } catch (err) {
+        if (this.voxelCarStatusRow) this.voxelCarStatusRow.style.display = 'block';
+        if (this.txtVoxelCarStatus) this.txtVoxelCarStatus.textContent = `LOAD FAILED: ${err.message}`;
+      }
+      e.target.value = '';
     });
 
     // Compounds
@@ -175,8 +203,8 @@ export class TelemetryHUD {
         this.app.resetLeadBody();
       } else if (e.code === 'KeyC') {
         this.app.setCameraMode(this.app.cameraMode === 'follow' ? 'orbit' : 'follow');
-        this.btnCamFollow.classList.toggle('active-toggle', this.app.cameraMode === 'follow');
-        this.btnCamOrbit.classList.toggle('active-toggle', this.app.cameraMode === 'orbit');
+        this.btnCamFollow?.classList.toggle('active-toggle', this.app.cameraMode === 'follow');
+        this.btnCamOrbit?.classList.toggle('active-toggle', this.app.cameraMode === 'orbit');
       }
     });
   }
