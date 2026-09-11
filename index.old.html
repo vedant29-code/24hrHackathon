@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Photo to 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink:#0b0b0b;
+    --paper:#fdfdfc;
+    --rule:#0b0b0b;
+    --muted:#7a7a76;
+    --serif:'Instrument Serif', 'Playfair Display', Georgia, 'Times New Roman', serif;
+    --sans:'Inter', ui-sans-serif, system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+  }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body { margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility; }
+
+  .pad { padding:0 clamp(16px, 2.6vw, 44px); }
+
+  /* ---- Masthead ------------------------------------------------------- */
+  header { display:flex; align-items:center; gap:24px; padding-top:22px;
+    padding-bottom:22px; font-size:clamp(15px, 1.35vw, 21px); }
+  .brand { font-weight:500; letter-spacing:-0.01em; white-space:nowrap; }
+  .brand sup { font-size:.52em; vertical-align:super; margin-left:1px; }
+  nav { margin-left:auto; margin-right:auto; display:flex; gap:0; flex-wrap:wrap;
+    justify-content:center; }
+  nav a { color:inherit; text-decoration:none; white-space:nowrap; }
+  /* A trailing space in generated content collapses, so the separator carries a
+     non-breaking space of its own. */
+  nav a::after { content:',\00a0'; }
+  nav a:last-child::after { content:''; }
+  nav a:hover { text-decoration:underline; text-underline-offset:3px; }
+  .talk { margin-left:auto; white-space:nowrap; color:inherit;
+    text-decoration:none; }
+  .talk:hover { text-decoration:underline; text-underline-offset:3px; }
+
+  /* ---- Section label -------------------------------------------------- */
+  .label { font-size:clamp(15px, 1.35vw, 21px); padding-bottom:10px; }
+  .rule { height:1px; background:var(--rule); }
+
+  /* ---- The six rows ----------------------------------------------------
+     One idea per line, set as large as the line can carry. The type is the
+     interface: the eye reads the six views in order before it reads anything
+     else on the page. */
+  .rows { list-style:none; margin:0; padding:0; }
+  .row { position:relative; border-bottom:1px solid var(--rule); }
+  .row a { display:block; text-decoration:none; color:inherit;
+    text-align:center; padding:0.06em 0 0.14em;
+    font-family:var(--serif); font-weight:400;
+    font-size:clamp(42px, 9.4vw, 172px);
+    line-height:1.02; letter-spacing:-0.005em;
+    transition:opacity .35s ease; }
+  .row a:focus-visible { outline:2px solid var(--ink); outline-offset:-6px; }
+
+  /* Hovering one row quiets the others, so the list reads as a single
+     sustained choice rather than six competing ones. */
+  .rows:hover .row a { opacity:.28; }
+  .rows .row a:hover { opacity:1; }
+
+  .idx { font-family:var(--sans); font-size:clamp(10px,0.78vw,13px);
+    vertical-align:super; margin-right:.5em; letter-spacing:.04em;
+    color:var(--muted); }
+
+  /* The framing rule for each view — the thing people get wrong — surfaces on
+     hover, in the reference's own trick of revealing detail on approach. */
+  .hint { position:absolute; right:clamp(16px,2.6vw,44px); top:50%;
+    transform:translateY(-50%) translateX(8px);
+    font-size:clamp(11px,0.95vw,15px); color:var(--muted); max-width:30ch;
+    text-align:right; opacity:0; transition:opacity .3s ease, transform .3s ease;
+    pointer-events:none; line-height:1.45; }
+  .row a:hover ~ .hint { opacity:1; transform:translateY(-50%) translateX(0); }
+
+  /* ---- Tools ----------------------------------------------------------- */
+  .tools { display:grid; gap:0; margin-top:clamp(48px,7vw,110px); }
+  .tool { display:flex; align-items:baseline; gap:clamp(12px,2vw,32px);
+    padding:clamp(16px,1.7vw,26px) 0; border-bottom:1px solid var(--rule);
+    text-decoration:none; color:inherit; }
+  .tool:first-of-type { border-top:1px solid var(--rule); }
+  .tool .n { font-size:clamp(10px,0.78vw,13px); color:var(--muted);
+    letter-spacing:.04em; flex:none; width:2.5em; }
+  .tool .t { font-family:var(--serif); font-size:clamp(22px,2.8vw,46px);
+    line-height:1.1; flex:none; }
+  .tool .d { font-size:clamp(12px,1vw,15px); color:var(--muted);
+    line-height:1.6; margin-left:auto; text-align:right; max-width:46ch; }
+  .tool:hover .t { font-style:italic; }
+  @media (max-width:720px) {
+    .tool { flex-wrap:wrap; }
+    .tool .d { margin-left:0; text-align:left; width:100%; margin-top:6px; }
+  }
+
+  footer { padding-top:clamp(34px,5vw,70px); padding-bottom:clamp(30px,4vw,60px);
+    font-size:clamp(11px,0.95vw,14px); color:var(--muted);
+    display:flex; justify-content:space-between; gap:20px; flex-wrap:wrap; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .row a, .hint { transition:none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="pad">
+  <header>
+    <span class="brand">Photo&nbsp;to&nbsp;3D<sup>®</sup></span>
+    <nav>
+      <a href="./compare.html">Build</a>
+      <a href="./smooth.html">Smooth</a>
+      <a href="./matte.html">Cut-out</a>
+      <a href="./reconstruct.html">Blocks</a>
+    </nav>
+    <a class="talk" href="./compare.html">Start&nbsp;→</a>
+  </header>
+
+  <div class="label">The six views</div>
+  <div class="rule"></div>
+
+  <ul class="rows">
+    <li class="row">
+      <a href="./compare.html"><span class="idx">01</span>Front</a>
+      <div class="hint">Facing the front of the object.</div>
+    </li>
+    <li class="row">
+      <a href="./compare.html"><span class="idx">02</span>Right side</a>
+      <div class="hint">Its front points to the <em>left</em> of frame.</div>
+    </li>
+    <li class="row">
+      <a href="./compare.html"><span class="idx">03</span>Back</a>
+      <div class="hint">Facing the back. Mirrored from the front.</div>
+    </li>
+    <li class="row">
+      <a href="./compare.html"><span class="idx">04</span>Left side</a>
+      <div class="hint">Its front points to the <em>right</em> of frame.</div>
+    </li>
+    <li class="row">
+      <a href="./compare.html"><span class="idx">05</span>From above</a>
+      <div class="hint">Front toward the bottom of the photo.</div>
+    </li>
+    <li class="row">
+      <a href="./compare.html"><span class="idx">06</span>From below</a>
+      <div class="hint">Front toward the top — the view above, flipped
+        vertically, not mirrored.</div>
+    </li>
+  </ul>
+
+  <div class="tools">
+    <a class="tool" href="./compare.html">
+      <span class="n">01</span>
+      <span class="t">Build from Outlines</span>
+      <span class="d">Builds a solid from the shape of your six photos against
+        the background.</span>
+    </a>
+    <a class="tool" href="./smooth.html">
+      <span class="n">02</span>
+      <span class="t">Smooth model</span>
+      <span class="d">One continuous surface, with smoothness and thickness
+        that update as you drag.</span>
+    </a>
+    <a class="tool" href="./matte.html">
+      <span class="n">03</span>
+      <span class="t">Cut-out lab</span>
+      <span class="d">Check one photo before committing six. Shows what was
+        kept, rejected as shadow, or recovered.</span>
+    </a>
+    <a class="tool" href="./reconstruct.html">
+      <span class="n">04</span>
+      <span class="t">Block model</span>
+      <span class="d">The voxel build, scored by projecting every model back
+        into your original photos.</span>
+    </a>
+  </div>
+
+  <footer>
+    <span>Six photos, white background, object centred with a margin.</span>
+    <span>Runs entirely in your browser.</span>
+  </footer>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,368 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Cut-out Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0e1015; --panel:#161920; --card:#0a0c11; --border:#2a2f3a;
+          --text:#e6e8ee; --muted:#8b93a7; --dim:#5f6779;
+          --accent:#7cc4ff; --good:#7ee787; --warn:#ffcf80; --bad:#ff7b72; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; overflow:hidden; }
+  .app { display:grid; grid-template-columns:330px 1fr; height:100vh; height:100dvh; }
+  .app > * { min-height:0; }
+
+  .panel { background:var(--panel); border-right:1px solid var(--border);
+    padding:22px; overflow-y:auto; padding-bottom:60px;
+    scrollbar-width:thin; scrollbar-color:#39404f transparent; }
+  .panel::-webkit-scrollbar { width:10px; }
+  .panel::-webkit-scrollbar-track { background:transparent; }
+  .panel::-webkit-scrollbar-thumb { background:#39404f; border-radius:5px;
+    border:2px solid transparent; background-clip:content-box; }
+
+  .brand { font-size:19px; font-weight:700; margin:0 0 3px; }
+  .tagline { color:var(--muted); font-size:12.5px; margin-bottom:20px; line-height:1.55; }
+  h2 { font-size:11px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:.06em; margin:20px 0 10px; border-top:1px solid var(--border);
+    padding-top:14px; }
+  h2:first-of-type { border-top:0; padding-top:0; margin-top:0; }
+
+  .drop { border:1px dashed var(--border); border-radius:9px; padding:16px;
+    text-align:center; position:relative; background:var(--card); }
+  .drop.hot { border-color:var(--accent); background:#0d1620; }
+  .drop input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .drop .t { font-size:12.5px; font-weight:600; }
+  .drop .s { font-size:11px; color:var(--muted); margin-top:4px; }
+
+  .ctl { margin-bottom:15px; }
+  .ctl > label { display:block; font-size:12.5px; margin-bottom:3px; font-weight:500; }
+  .ctl .sub { font-size:11px; color:var(--muted); margin-bottom:7px; line-height:1.45; }
+  .val { color:var(--accent); font-variant-numeric:tabular-nums; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .ends { display:flex; justify-content:space-between; font-size:10.5px;
+    color:var(--dim); margin-top:1px; }
+  select, button { width:100%; background:var(--card); color:var(--text);
+    border:1px solid var(--border); border-radius:7px; padding:9px; font-size:13px;
+    font-family:inherit; cursor:pointer; }
+
+  .report { background:var(--card); border:1px solid var(--border);
+    border-radius:9px; padding:12px; font-size:11.5px; }
+  .row { display:flex; justify-content:space-between; padding:3px 0;
+    color:var(--muted); }
+  .row b { color:var(--text); font-variant-numeric:tabular-nums; }
+  .verdict { font-size:13px; font-weight:700; margin-bottom:8px; }
+  .verdict.ok { color:var(--good); }
+  .verdict.warn { color:var(--warn); }
+  .warn-item { color:var(--warn); font-size:11px; line-height:1.55;
+    padding:6px 0 0 12px; text-indent:-12px; }
+
+  .stage { padding:20px; overflow-y:auto; display:flex; flex-direction:column;
+    gap:16px; scrollbar-width:thin; scrollbar-color:#39404f transparent; }
+  .stage::-webkit-scrollbar { width:10px; }
+  .stage::-webkit-scrollbar-thumb { background:#39404f; border-radius:5px;
+    border:2px solid transparent; background-clip:content-box; }
+
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr));
+    gap:14px; }
+  .cell { background:var(--panel); border:1px solid var(--border);
+    border-radius:10px; padding:11px; }
+  .cell .t { font-size:11.5px; font-weight:600; margin-bottom:2px; }
+  .cell .d { font-size:10.5px; color:var(--muted); margin-bottom:8px;
+    line-height:1.5; min-height:29px; }
+  .cell canvas { width:100%; display:block; border-radius:6px;
+    border:1px solid var(--border); background:
+      repeating-conic-gradient(#1a1d24 0% 25%, #14171e 0% 50%) 50%/14px 14px; }
+  .legend { display:flex; gap:12px; flex-wrap:wrap; font-size:10.5px;
+    color:var(--muted); margin-top:8px; }
+  .sw { display:inline-block; width:9px; height:9px; border-radius:2px;
+    margin-right:4px; vertical-align:middle; }
+  .empty { color:var(--muted); font-size:13px; text-align:center; padding:60px 20px;
+    border:1px dashed var(--border); border-radius:10px; line-height:1.7; }
+</style>
+<link rel="stylesheet" href="./studio.css">
+
+</head>
+<body>
+<div class="app">
+
+<aside class="panel">
+  <div class="brand">Cut-out Lab</div>
+  <div class="tagline">
+    Tune and inspect the white-background cut-out on a single photo before
+    committing six of them to a model.
+  </div>
+
+  <h2>Photo</h2>
+  <div class="drop" id="drop">
+    <input id="file" type="file" accept="image/*" />
+    <div class="t">Choose or drop a photo</div>
+    <div class="s">Object on a white backdrop</div>
+  </div>
+
+  <h2>Tuning</h2>
+  <div class="ctl">
+    <label>Sensitivity <span class="val" id="sensVal">0.50</span></label>
+    <div class="sub">How faint a difference still counts as object.</div>
+    <input id="sens" type="range" min="0" max="1" value="0.5" step="0.01" />
+    <div class="ends"><span>Only strong contrast</span><span>Faint detail too</span></div>
+  </div>
+  <div class="ctl">
+    <label>Shadow removal <span class="val" id="shadVal">0.65</span></label>
+    <div class="sub">Rejects neutral grey cast on the backdrop without eating
+      dark parts of the object.</div>
+    <input id="shad" type="range" min="0" max="1" value="0.65" step="0.01" />
+    <div class="ends"><span>Keep shadows</span><span>Remove hard</span></div>
+  </div>
+  <div class="ctl">
+    <label>Speckle removal <span class="val" id="specVal">0.02</span></label>
+    <input id="spec" type="range" min="0" max="0.2" value="0.02" step="0.005" />
+    <div class="ends"><span>Keep everything</span><span>Clean hard</span></div>
+  </div>
+  <div class="ctl">
+    <label>Recover white parts of the object</label>
+    <div class="sub">Anything the background cannot reach from outside counts as
+      object, whatever its colour.</div>
+    <select id="fill">
+      <option value="1">On — recommended</option>
+      <option value="0">Off</option>
+    </select>
+  </div>
+  <button id="reset">Reset to defaults</button>
+
+  <h2>Quality report</h2>
+  <div class="report" id="report">
+    <div class="verdict">No photo loaded</div>
+    <div style="color:var(--muted)">Load a photo to see the analysis.</div>
+  </div>
+</aside>
+
+<main class="stage" id="stage">
+  <div class="empty" id="empty">
+    Load a photo to see the cut-out, what was treated as shadow,<br>
+    and how it compares with a plain brightness threshold.
+  </div>
+  <div class="grid" id="grid" style="display:none;">
+    <div class="cell">
+      <div class="t">Photo</div>
+      <div class="d">What went in.</div>
+      <canvas id="cSrc"></canvas>
+    </div>
+    <div class="cell">
+      <div class="t">Confidence</div>
+      <div class="d">How strongly each pixel differs from the backdrop —
+        brighter means more certain it is object.</div>
+      <canvas id="cAlpha"></canvas>
+    </div>
+    <div class="cell">
+      <div class="t">Decision map</div>
+      <div class="d">What was kept, what was rejected as shadow, and what was
+        recovered because the background could not reach it.</div>
+      <canvas id="cDecide"></canvas>
+      <div class="legend">
+        <span><i class="sw" style="background:#7ee787"></i>kept</span>
+        <span><i class="sw" style="background:#ff7b72"></i>shadow rejected</span>
+        <span><i class="sw" style="background:#7cc4ff"></i>recovered</span>
+      </div>
+    </div>
+    <div class="cell">
+      <div class="t">Final cut-out</div>
+      <div class="d">The silhouette the 3D build will actually use.</div>
+      <canvas id="cMask"></canvas>
+    </div>
+    <div class="cell">
+      <div class="t">Plain threshold, for comparison</div>
+      <div class="d">The naive "darker than 50%" test, which is what this
+        replaces.</div>
+      <canvas id="cNaive"></canvas>
+    </div>
+    <div class="cell">
+      <div class="t">Difference</div>
+      <div class="d">Where the two disagree — usually shadow the naive test
+        swallowed, or pale detail it dropped.</div>
+      <canvas id="cDiff"></canvas>
+      <div class="legend">
+        <span><i class="sw" style="background:#ff7b72"></i>naive grabbed extra</span>
+        <span><i class="sw" style="background:#7cc4ff"></i>naive missed</span>
+      </div>
+    </div>
+  </div>
+</main>
+
+</div>
+
+<script type="module">
+import { extractMatte, DEFAULTS } from './whitematte.js';
+
+const $ = (id) => document.getElementById(id);
+const fileEl=$('file'), dropEl=$('drop'), sensEl=$('sens'), shadEl=$('shad'),
+      specEl=$('spec'), fillEl=$('fill'), resetEl=$('reset'),
+      reportEl=$('report'), gridEl=$('grid'), emptyEl=$('empty');
+
+let imageData = null;
+let timer = null;
+
+// Re-running the matte on every tick of a drag would stutter on large photos;
+// waiting for a pause keeps the sliders smooth.
+const schedule = () => { clearTimeout(timer); timer = setTimeout(run, 120); };
+
+const bind = (el, label, digits) => {
+  const out = $(label);
+  const sync = () => out.textContent = (+el.value).toFixed(digits);
+  el.oninput = () => { sync(); schedule(); };
+  sync();
+};
+bind(sensEl, 'sensVal', 2);
+bind(shadEl, 'shadVal', 2);
+bind(specEl, 'specVal', 3);
+fillEl.onchange = run;
+resetEl.onclick = () => {
+  sensEl.value = DEFAULTS.sensitivity;
+  shadEl.value = DEFAULTS.shadowRemoval;
+  specEl.value = DEFAULTS.despeckle;
+  fillEl.value = '1';
+  $('sensVal').textContent = DEFAULTS.sensitivity.toFixed(2);
+  $('shadVal').textContent = DEFAULTS.shadowRemoval.toFixed(2);
+  $('specVal').textContent = DEFAULTS.despeckle.toFixed(3);
+  run();
+};
+
+fileEl.onchange = (e) => e.target.files[0] && load(e.target.files[0]);
+['dragenter','dragover'].forEach((ev) =>
+  dropEl.addEventListener(ev, (e) => { e.preventDefault(); dropEl.classList.add('hot'); }));
+['dragleave','drop'].forEach((ev) =>
+  dropEl.addEventListener(ev, (e) => { e.preventDefault(); dropEl.classList.remove('hot'); }));
+dropEl.addEventListener('drop', (e) => {
+  const f = e.dataTransfer.files[0];
+  if (f) load(f);
+});
+
+async function load(file) {
+  const url = URL.createObjectURL(file);
+  const img = await new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im); im.onerror = rej; im.src = url;
+  });
+  URL.revokeObjectURL(url);
+  const MAX = 640;
+  const k = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, w, h);
+  imageData = ctx.getImageData(0, 0, w, h);
+  run();
+}
+
+function run() {
+  if (!imageData) return;
+  emptyEl.style.display = 'none';
+  gridEl.style.display = 'grid';
+
+  const t0 = performance.now();
+  const res = extractMatte(imageData, {
+    sensitivity:   +sensEl.value,
+    shadowRemoval: +shadEl.value,
+    despeckle:     +specEl.value,
+    fillHoles:     fillEl.value === '1',
+  });
+  const ms = Math.round(performance.now() - t0);
+
+  const { w, h, mask, alpha, shadowMap, report } = res;
+
+  // The same matte with hole recovery off, so the decision map can show which
+  // pixels only survived because the background could not reach them.
+  const noFill = extractMatte(imageData, {
+    sensitivity:   +sensEl.value,
+    shadowRemoval: +shadEl.value,
+    despeckle:     +specEl.value,
+    fillHoles:     false,
+  }).mask;
+
+  const naive = naiveThreshold(imageData);
+
+  draw($('cSrc'), w, h, (i, d) => {
+    const p = i*4;
+    d[p]=imageData.data[p]; d[p+1]=imageData.data[p+1];
+    d[p+2]=imageData.data[p+2]; d[p+3]=255;
+  });
+  draw($('cAlpha'), w, h, (i, d) => {
+    const v = Math.round(alpha[i]*255), p = i*4;
+    d[p]=v; d[p+1]=v; d[p+2]=v; d[p+3]=255;
+  });
+  draw($('cDecide'), w, h, (i, d) => {
+    const p = i*4;
+    let col;
+    if (mask[i] && !noFill[i])      col = [124,196,255];   // recovered
+    else if (mask[i])               col = [126,231,135];   // kept
+    else if (shadowMap[i] > 0.05)   col = [255,123,114];   // shadow rejected
+    else                            col = [16,18,24];
+    d[p]=col[0]; d[p+1]=col[1]; d[p+2]=col[2]; d[p+3]=255;
+  });
+  draw($('cMask'), w, h, (i, d) => {
+    const v = mask[i] ? 255 : 16, p = i*4;
+    d[p]=v; d[p+1]=v; d[p+2]=v; d[p+3]=255;
+  });
+  draw($('cNaive'), w, h, (i, d) => {
+    const v = naive[i] ? 255 : 16, p = i*4;
+    d[p]=v; d[p+1]=v; d[p+2]=v; d[p+3]=255;
+  });
+  let extra = 0, missed = 0;
+  draw($('cDiff'), w, h, (i, d) => {
+    const p = i*4;
+    let col;
+    if (naive[i] && !mask[i])      { col = [255,123,114]; extra++; }
+    else if (!naive[i] && mask[i]) { col = [124,196,255]; missed++; }
+    else if (mask[i])                col = [56,62,74];
+    else                             col = [16,18,24];
+    d[p]=col[0]; d[p+1]=col[1]; d[p+2]=col[2]; d[p+3]=255;
+  });
+
+  renderReport(report, ms, extra, missed, w*h);
+}
+
+function draw(canvas, w, h, fn) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  for (let i = 0; i < w*h; i++) fn(i, img.data);
+  ctx.putImageData(img, 0, 0);
+}
+
+// The method this replaces: one global brightness cut, no background model, no
+// shadow handling, no connectivity.
+function naiveThreshold(imageData) {
+  const { data: px, width: w, height: h } = imageData;
+  const out = new Uint8Array(w*h);
+  for (let i = 0, p = 0; i < w*h; i++, p += 4) {
+    const lum = (0.2126*px[p] + 0.7152*px[p+1] + 0.0722*px[p+2]) / 255;
+    out[i] = lum < 0.5 ? 1 : 0;
+  }
+  return out;
+}
+
+function renderReport(r, ms, extra, missed, total) {
+  const ok = r.warnings.length === 0;
+  const pct = (v) => (100*v).toFixed(1) + '%';
+  const rows = [
+    ['Object covers',        pct(r.coverage)],
+    ['Backdrop brightness',  r.backgroundLevel.toFixed(0) + ' / 255'],
+    ['Backdrop evenness',    r.uniformity.toFixed(1) + (r.uniformity < 8 ? ' (good)' : ' (uneven)')],
+    ['Shadow rejected',      pct(r.shadowRejected)],
+    ['Recovered by enclosure', pct(r.recovered)],
+    ['Touching frame edge',  pct(r.borderTouch)],
+    ['Differs from naive',   pct((extra+missed)/total)],
+    ['Time',                 ms + ' ms'],
+  ];
+  reportEl.innerHTML =
+    `<div class="verdict ${ok?'ok':'warn'}">${ok ? 'Looks good' : 'Check these'}</div>` +
+    rows.map(([k,v]) => `<div class="row"><span>${k}</span><b>${v}</b></div>`).join('') +
+    r.warnings.map((wn) => `<div class="warn-item">• ${wn}</div>`).join('');
+}
+</script>
+</body>
+</html>

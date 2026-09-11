@@ -1,0 +1,539 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Depth Fusion → 3D</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --border:#2a2f3a; --text:#e6e8ee;
+          --muted:#8b93a7; --accent:#7cc4ff; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font-family: ui-sans-serif, system-ui, sans-serif; overflow:hidden; }
+  .app { display:grid; grid-template-columns:380px 1fr; height:100vh; }
+  .panel { background:var(--panel); border-right:1px solid var(--border);
+    padding:20px; overflow-y:auto; }
+  h1 { font-size:16px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:12px; margin-bottom:16px; }
+  .note { background:#101820; border:1px solid var(--border); border-radius:6px;
+    padding:8px 10px; font-size:11px; color:var(--muted); line-height:1.5;
+    margin-bottom:16px; }
+  h2 { font-size:12px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:0.05em; margin:18px 0 8px; }
+  .field { margin-bottom:12px; }
+  label { display:block; font-size:12px; color:var(--muted); margin-bottom:6px; }
+  input[type=file], select, button {
+    width:100%; background:#0b0d12; color:var(--text);
+    border:1px solid var(--border); border-radius:6px; padding:8px; font-size:13px;
+  }
+  input[type=range] { width:100%; }
+  .val { color:var(--accent); font-size:12px; font-variant-numeric:tabular-nums; }
+  button { cursor:pointer; }
+  button.primary { background:var(--accent); color:#06121e; border:0;
+    font-weight:600; margin-top:8px; }
+  button:disabled { opacity:0.5; cursor:not-allowed; }
+  .views { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px; }
+  .view { background:#0b0d12; border:1px dashed var(--border); border-radius:6px;
+    padding:8px; font-size:11px; color:var(--muted); }
+  .view.filled { border-style:solid; border-color:var(--accent); color:var(--text); }
+  .view label { font-size:10px; text-transform:uppercase; letter-spacing:0.05em; }
+  .view input[type=file] { padding:4px; font-size:11px; margin-top:4px; }
+  .view .thumbs { display:flex; gap:4px; margin-top:6px; }
+  .view .thumbs canvas { width:50%; border:1px solid var(--border);
+    border-radius:4px; display:block; background:#000; }
+  .stage { position:relative; padding:24px; display:flex; flex-direction:column;
+    gap:12px; overflow:hidden; }
+  .viewer-header { display:flex; justify-content:space-between; align-items:center;
+    color:var(--muted); font-size:12px; }
+  .viewer-header .title { color:var(--text); font-weight:600; font-size:14px; }
+  .viewer { position:relative; width:100%; max-width:640px; aspect-ratio:1/1;
+    margin:0 auto; background:#0b0d12; border:1px solid var(--border);
+    border-radius:12px; overflow:hidden; box-shadow:0 10px 40px rgba(0,0,0,0.4); }
+  #canvas { width:100%; height:100%; display:block; }
+  .viewer-toolbar { display:flex; gap:8px; justify-content:center; }
+  .viewer-toolbar button { width:auto; padding:6px 12px; font-size:12px;
+    background:#0b0d12; color:var(--text); border:1px solid var(--border);
+    border-radius:6px; }
+  #log { margin-top:auto; background:#0b0d12; border:1px solid var(--border);
+    border-radius:6px; padding:8px 12px; font-family:ui-monospace,monospace;
+    font-size:11px; color:var(--muted); max-height:160px; overflow-y:auto;
+    white-space:pre-wrap; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div class="app">
+  <aside class="panel">
+    <h1>Depth Fusion → 3D</h1>
+    <div class="sub">6-view silhouette carving + per-view depth</div>
+
+    <div class="note">
+      Each image runs through the depth model, then a voxel grid is carved
+      by <b>both</b> silhouette and depth. This captures concavities that
+      pure silhouette carving misses.
+    </div>
+
+    <div class="field">
+      <label>Backend</label>
+      <select id="backend">
+        <option value="webgpu">WebGPU</option>
+        <option value="wasm">WASM</option>
+      </select>
+    </div>
+
+    <h2>Views (all 6 required)</h2>
+    <div class="views" id="views"></div>
+
+    <h2>Silhouette detection</h2>
+    <div class="field">
+      <label>Mode</label>
+      <select id="mode">
+        <option value="alpha">Alpha (transparent bg)</option>
+        <option value="corner">Corner color match</option>
+        <option value="luma">Luminance threshold</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Threshold <span class="val" id="thrVal">0.50</span></label>
+      <input id="thr" type="range" min="0" max="1" value="0.5" step="0.01" />
+    </div>
+
+    <h2>Depth fusion</h2>
+    <div class="field">
+      <label>Depth tolerance <span class="val" id="tolVal">0.08</span></label>
+      <input id="tol" type="range" min="0.01" max="0.3" value="0.08" step="0.01" />
+    </div>
+    <div class="note" style="margin-top:0;">
+      Tolerance = how far in front of the surface a voxel may sit before it's
+      carved. Lower = tighter fit but noisier; higher = smoother but less concavity.
+    </div>
+
+    <h2>Reconstruction</h2>
+    <div class="field">
+      <label>Voxel resolution <span class="val" id="resVal">64</span></label>
+      <input id="res" type="range" min="24" max="128" value="64" step="4" />
+    </div>
+    <div class="field">
+      <label>Color source</label>
+      <select id="colorSrc">
+        <option value="views">Blend from views</option>
+        <option value="solid">Solid</option>
+      </select>
+    </div>
+
+    <button id="build" class="primary" disabled>Run depth on all views &amp; carve</button>
+  </aside>
+
+  <main class="stage">
+    <div class="viewer-header">
+      <div class="title">3D preview</div>
+      <div>drag · scroll · right-drag</div>
+    </div>
+    <div class="viewer"><canvas id="canvas"></canvas></div>
+    <div class="viewer-toolbar">
+      <button id="reset">Reset view</button>
+      <button id="toggleRotate">Pause rotation</button>
+      <button id="toggleAxes">Hide axes</button>
+    </div>
+    <div id="log"></div>
+  </main>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { pipeline, env, RawImage } from
+  'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2';
+
+env.allowLocalModels = false;
+env.useBrowserCache = false;
+env.useFSCache = false;
+env.useCustomCache = false;
+
+const $ = (id) => document.getElementById(id);
+const backendEl=$('backend'), viewsEl=$('views'), modeEl=$('mode'),
+      thrEl=$('thr'), thrVal=$('thrVal'), tolEl=$('tol'), tolVal=$('tolVal'),
+      resEl=$('res'), resVal=$('resVal'), colorSrcEl=$('colorSrc'),
+      buildBtn=$('build'), canvasEl=$('canvas'), logEl=$('log');
+
+const log = (m) => {
+  logEl.textContent += `[${new Date().toLocaleTimeString()}] ${m}\n`;
+  logEl.scrollTop = logEl.scrollHeight;
+};
+
+thrEl.oninput = () => thrVal.textContent = (+thrEl.value).toFixed(2);
+tolEl.oninput = () => tolVal.textContent = (+tolEl.value).toFixed(2);
+resEl.oninput = () => resVal.textContent = resEl.value;
+
+// ---------- Slots (6 fixed) ----------
+// kind: 'side' with angle around Y | 'top' | 'bottom'
+// angle convention: at angle θ the camera looks toward origin from direction (sin θ, 0, cos θ)
+// so θ=0 means camera on +Z axis (front), θ=π/2 on +X (right), etc.
+const slotDefs = [
+  { key: 'front',  label: 'Front',  kind: 'side', angle: 0 },
+  { key: 'right',  label: 'Right',  kind: 'side', angle: Math.PI/2 },
+  { key: 'back',   label: 'Back',   kind: 'side', angle: Math.PI },
+  { key: 'left',   label: 'Left',   kind: 'side', angle: 3*Math.PI/2 },
+  { key: 'top',    label: 'Top',    kind: 'top',  angle: 0 },
+  { key: 'bottom', label: 'Bottom', kind: 'bottom', angle: 0 },
+];
+const slots = slotDefs.map(s => ({ ...s, imageData: null, depth: null, sil: null }));
+
+function renderSlots() {
+  viewsEl.innerHTML = '';
+  for (const s of slots) {
+    const wrap = document.createElement('div');
+    wrap.className = 'view' + (s.imageData ? ' filled' : '');
+    wrap.innerHTML = `<label>${s.label}</label>`;
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*';
+    input.onchange = async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      const img = await loadImage(URL.createObjectURL(f));
+      s.imageData = imageToImageData(img);
+      s.depth = null; s.sil = null; // must re-run
+      wrap.classList.add('filled');
+      drawSlotThumbs(wrap, s);
+      updateBuildEnabled();
+      log(`${s.label}: ${img.naturalWidth}×${img.naturalHeight}`);
+    };
+    wrap.appendChild(input);
+    if (s.imageData) drawSlotThumbs(wrap, s);
+    viewsEl.appendChild(wrap);
+  }
+  updateBuildEnabled();
+}
+function drawSlotThumbs(wrap, s) {
+  let thumbs = wrap.querySelector('.thumbs');
+  if (!thumbs) { thumbs = document.createElement('div'); thumbs.className = 'thumbs';
+                 wrap.appendChild(thumbs); }
+  thumbs.innerHTML = '';
+  const cImg = makeThumb(s.imageData, 130);
+  thumbs.appendChild(cImg);
+  if (s.depth) {
+    const cDepth = makeDepthThumb(s.depth, 130);
+    thumbs.appendChild(cDepth);
+  }
+}
+function makeThumb(imageData, maxW) {
+  const c = document.createElement('canvas');
+  const scale = Math.min(1, maxW / imageData.width);
+  c.width = Math.round(imageData.width * scale);
+  c.height = Math.round(imageData.height * scale);
+  const off = document.createElement('canvas');
+  off.width = imageData.width; off.height = imageData.height;
+  off.getContext('2d').putImageData(imageData, 0, 0);
+  c.getContext('2d').drawImage(off, 0, 0, c.width, c.height);
+  return c;
+}
+function makeDepthThumb(depth, maxW) {
+  const c = document.createElement('canvas');
+  const scale = Math.min(1, maxW / depth.width);
+  c.width = Math.round(depth.width * scale);
+  c.height = Math.round(depth.height * scale);
+  const off = document.createElement('canvas');
+  off.width = depth.width; off.height = depth.height;
+  const octx = off.getContext('2d');
+  const id = octx.createImageData(depth.width, depth.height);
+  for (let i = 0; i < depth.width * depth.height; i++) {
+    const v = depth.data[i];
+    id.data[i*4]=v; id.data[i*4+1]=v; id.data[i*4+2]=v; id.data[i*4+3]=255;
+  }
+  octx.putImageData(id, 0, 0);
+  c.getContext('2d').drawImage(off, 0, 0, c.width, c.height);
+  return c;
+}
+function updateBuildEnabled() {
+  buildBtn.disabled = !slots.every((s) => s.imageData);
+}
+function loadImage(url) {
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => { res(im); URL.revokeObjectURL(url); };
+    im.onerror = rej; im.src = url;
+  });
+}
+function imageToImageData(img) {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  return ctx.getImageData(0, 0, c.width, c.height);
+}
+renderSlots();
+
+// ---------- Silhouette ----------
+function silhouetteFor(imageData) {
+  const { data: px, width: w, height: h } = imageData;
+  const mode = modeEl.value; const thr = +thrEl.value;
+  const out = new Uint8Array(w * h);
+  let bgR=0,bgG=0,bgB=0;
+  if (mode === 'corner') {
+    const c = [[0,0],[w-1,0],[0,h-1],[w-1,h-1]];
+    for (const [x,y] of c) { const i=(y*w+x)*4; bgR+=px[i]; bgG+=px[i+1]; bgB+=px[i+2]; }
+    bgR/=4; bgG/=4; bgB/=4;
+  }
+  for (let i=0,p=0; i<w*h; i++, p+=4) {
+    const r=px[p],g=px[p+1],b=px[p+2],a=px[p+3];
+    let on = false;
+    if (mode === 'alpha') on = (a/255) > thr;
+    else if (mode === 'luma') { const lum=(0.2126*r+0.7152*g+0.0722*b)/255;
+                                on = a>8 && lum < thr; }
+    else { if (a<8) on=false; else {
+      const dr=r-bgR,dg=g-bgG,db=b-bgB;
+      const dist=Math.sqrt(dr*dr+dg*dg+db*db)/441.67;
+      on = dist > (1-thr)*0.5;
+    }}
+    out[i] = on ? 1 : 0;
+  }
+  return { mask: out, w, h };
+}
+function sampleMask(sil, u, v) {
+  if (u<0||u>1||v<0||v>1) return 0;
+  const x=Math.min(sil.w-1,Math.max(0,Math.floor(u*sil.w)));
+  const y=Math.min(sil.h-1,Math.max(0,Math.floor(v*sil.h)));
+  return sil.mask[y*sil.w+x];
+}
+function sampleDepth(d, u, v) {
+  if (u<0||u>1||v<0||v>1) return -1;
+  const x=Math.min(d.width-1,Math.max(0,Math.floor(u*d.width)));
+  const y=Math.min(d.height-1,Math.max(0,Math.floor(v*d.height)));
+  return d.data[y*d.width+x] / 255; // 0..1
+}
+function sampleColor(img, u, v) {
+  if (u<0||u>1||v<0||v>1) return null;
+  const x=Math.min(img.width-1,Math.max(0,Math.floor(u*img.width)));
+  const y=Math.min(img.height-1,Math.max(0,Math.floor(v*img.height)));
+  const p=(y*img.width+x)*4;
+  return [img.data[p], img.data[p+1], img.data[p+2]];
+}
+
+// ---------- Depth model ----------
+let depthPipeline = null, loadedBackend = null;
+async function ensureModel() {
+  const backend = backendEl.value;
+  if (depthPipeline && loadedBackend === backend) return;
+  log(`Loading depth model on ${backend}…`);
+  const t0 = performance.now();
+  depthPipeline = await pipeline(
+    'depth-estimation',
+    'onnx-community/depth-anything-v2-small',
+    { device: backend, dtype: 'fp32' }
+  );
+  loadedBackend = backend;
+  log(`Model ready in ${((performance.now()-t0)/1000).toFixed(2)}s`);
+}
+async function runDepthForSlot(s) {
+  const url = imageDataToURL(s.imageData);
+  const image = await RawImage.fromURL(url);
+  const t0 = performance.now();
+  const { depth } = await depthPipeline(image);
+  URL.revokeObjectURL(url);
+  s.depth = { width: depth.width, height: depth.height, data: depth.data };
+  // Per-view normalize inside the silhouette region to [0,1]
+  // so depth scale is comparable across views.
+  const sil = silhouetteFor(s.imageData);
+  // resample silhouette to depth dims
+  let dmin = 1, dmax = 0, count = 0;
+  for (let y = 0; y < depth.height; y++) for (let x = 0; x < depth.width; x++) {
+    const u = x / (depth.width-1), v = y / (depth.height-1);
+    if (!sampleMask(sil, u, v)) continue;
+    const d = depth.data[y*depth.width+x] / 255;
+    if (d < dmin) dmin = d; if (d > dmax) dmax = d; count++;
+  }
+  if (count > 0 && dmax > dmin) {
+    const range = dmax - dmin;
+    const norm = new Uint8Array(depth.width * depth.height);
+    for (let i = 0; i < depth.width * depth.height; i++) {
+      const d = depth.data[i] / 255;
+      const nd = Math.min(1, Math.max(0, (d - dmin) / range));
+      norm[i] = Math.round(nd * 255);
+    }
+    s.depth.data = norm;
+  }
+  s.sil = sil;
+  log(`  · ${s.label} depth: ${((performance.now()-t0)/1000).toFixed(2)}s`);
+}
+function imageDataToURL(imgData) {
+  const c = document.createElement('canvas');
+  c.width = imgData.width; c.height = imgData.height;
+  c.getContext('2d').putImageData(imgData, 0, 0);
+  return c.toDataURL('image/png');
+}
+
+// ---------- Projection ----------
+// Object bounds: unit cube centered at origin, x,y,z ∈ [-0.5, 0.5]
+// For a side view at angle θ, camera at (sin θ, 0, cos θ) * R looking at origin.
+// Camera-frame Z (positive toward camera) = x*sin(θ) + z*cos(θ)  (range ≈ [-0.5, 0.5])
+// Camera-frame X (right on screen) = x*cos(θ) - z*sin(θ)
+// Image u = 0.5 + camX,  v = 0.5 - y
+function projectSide(x, y, z, angle) {
+  return {
+    u: 0.5 + (x * Math.cos(angle) - z * Math.sin(angle)),
+    v: 0.5 - y,
+    zview: x * Math.sin(angle) + z * Math.cos(angle),
+  };
+}
+// Top view: camera at +Y looking down. Camera Z (toward camera) = y. Image: u=x, v=z
+function projectTop(x, y, z) { return { u: 0.5 + x, v: 0.5 + z, zview: y }; }
+// Bottom view: camera at -Y looking up. Camera Z = -y. Image: u=x, v=-z (flip)
+function projectBottom(x, y, z) { return { u: 0.5 + x, v: 0.5 - z, zview: -y }; }
+
+function projectFor(slot, x, y, z) {
+  if (slot.kind === 'side') return projectSide(x, y, z, slot.angle);
+  if (slot.kind === 'top') return projectTop(x, y, z);
+  return projectBottom(x, y, z);
+}
+
+// ---------- Carving with depth fusion ----------
+function carve() {
+  const N = +resEl.value;
+  const tol = +tolEl.value;
+  log(`Fused carving ${N}³ = ${N*N*N} voxels against ${slots.length} views…`);
+  const occ = new Uint8Array(N*N*N);
+  let kept = 0;
+  const t0 = performance.now();
+  const step = 1 / N;
+  for (let iy = 0; iy < N; iy++) {
+    const y = -0.5 + (iy + 0.5) * step;
+    for (let iz = 0; iz < N; iz++) {
+      const z = -0.5 + (iz + 0.5) * step;
+      for (let ix = 0; ix < N; ix++) {
+        const x = -0.5 + (ix + 0.5) * step;
+        let inside = true;
+        for (const s of slots) {
+          const p = projectFor(s, x, y, z);
+          if (!sampleMask(s.sil, p.u, p.v)) { inside = false; break; }
+          // Depth check: depth=1 means closest to camera (largest zview)
+          // Surface z in view frame ≈ (depth - 0.5) mapped so depth=1 → +0.5, depth=0 → -0.5
+          const dm = sampleDepth(s.depth, p.u, p.v);
+          if (dm < 0) { inside = false; break; }
+          const surfZ = dm - 0.5;
+          if (p.zview > surfZ + tol) { inside = false; break; }
+        }
+        if (inside) { occ[iy*N*N + iz*N + ix] = 1; kept++; }
+      }
+    }
+  }
+  log(`Carved in ${((performance.now()-t0)/1000).toFixed(2)}s · kept ${kept} (${(100*kept/(N*N*N)).toFixed(1)}%)`);
+  return { N, occ };
+}
+
+function voxelColor(x, y, z) {
+  if (colorSrcEl.value === 'solid') return [200,210,220];
+  let r=0,g=0,b=0,w=0;
+  for (const s of slots) {
+    if (s.kind !== 'side') continue;
+    const p = projectFor(s, x, y, z);
+    const c = sampleColor(s.imageData, p.u, p.v);
+    if (!c) continue;
+    // weight by how front-facing (larger zview = closer to this camera)
+    const wt = Math.max(0.05, 0.5 + p.zview);
+    r += c[0]*wt; g += c[1]*wt; b += c[2]*wt; w += wt;
+  }
+  if (w === 0) return [200,210,220];
+  return [r/w, g/w, b/w];
+}
+
+// ---------- Three.js ----------
+const renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0f1115);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
+camera.position.set(1.5, 1.2, 1.8);
+const controls = new OrbitControls(camera, canvasEl);
+controls.enableDamping = true;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 1.0;
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const key = new THREE.DirectionalLight(0xffffff, 1.0); key.position.set(2,3,2); scene.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, 0.4); fill.position.set(-2,1,-2); scene.add(fill);
+const axes = new THREE.AxesHelper(0.6); scene.add(axes);
+
+let currentMesh = null;
+function resize() {
+  const w = canvasEl.clientWidth, h = canvasEl.clientHeight;
+  if (canvasEl.width !== w || canvasEl.height !== h) {
+    renderer.setSize(w, h, false);
+    camera.aspect = w/h; camera.updateProjectionMatrix();
+  }
+}
+function animate() { resize(); controls.update(); renderer.render(scene, camera);
+                     requestAnimationFrame(animate); }
+animate();
+
+$('reset').onclick = () => { camera.position.set(1.5,1.2,1.8); controls.target.set(0,0,0); controls.update(); };
+$('toggleRotate').onclick = (e) => { controls.autoRotate = !controls.autoRotate;
+  e.target.textContent = controls.autoRotate ? 'Pause rotation' : 'Resume rotation'; };
+$('toggleAxes').onclick = (e) => { axes.visible = !axes.visible;
+  e.target.textContent = axes.visible ? 'Hide axes' : 'Show axes'; };
+
+// ---------- Build ----------
+buildBtn.onclick = async () => {
+  buildBtn.disabled = true;
+  try {
+    await ensureModel();
+    log(`Running depth on ${slots.length} views…`);
+    for (const s of slots) {
+      if (!s.depth) await runDepthForSlot(s);
+      // refresh thumbnail with depth
+      const wrap = viewsEl.children[slots.indexOf(s)];
+      if (wrap) drawSlotThumbs(wrap, s);
+    }
+    const { N, occ } = carve();
+    render(N, occ);
+  } catch (err) {
+    log(`ERROR: ${err.message}`); console.error(err);
+  } finally {
+    buildBtn.disabled = false;
+  }
+};
+
+function render(N, occ) {
+  if (currentMesh) {
+    scene.remove(currentMesh);
+    currentMesh.geometry.dispose(); currentMesh.material.dispose();
+  }
+  const idxOf = (x,y,z) => y*N*N + z*N + x;
+  const surface = [];
+  for (let y=0;y<N;y++) for (let z=0;z<N;z++) for (let x=0;x<N;x++) {
+    if (!occ[idxOf(x,y,z)]) continue;
+    let exposed = (x===0||x===N-1||y===0||y===N-1||z===0||z===N-1);
+    if (!exposed) exposed = !occ[idxOf(x-1,y,z)]||!occ[idxOf(x+1,y,z)]||
+                            !occ[idxOf(x,y-1,z)]||!occ[idxOf(x,y+1,z)]||
+                            !occ[idxOf(x,y,z-1)]||!occ[idxOf(x,y,z+1)];
+    if (exposed) surface.push([x,y,z]);
+  }
+  log(`Surface voxels: ${surface.length}`);
+  const cs = 1 / N;
+  const geo = new THREE.BoxGeometry(cs, cs, cs);
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: false });
+  const inst = new THREE.InstancedMesh(geo, mat, surface.length);
+  const dummy = new THREE.Object3D();
+  const col = new THREE.Color();
+  for (let i=0;i<surface.length;i++) {
+    const [ix,iy,iz] = surface[i];
+    const x = -0.5 + (ix+0.5)*cs, y = -0.5 + (iy+0.5)*cs, z = -0.5 + (iz+0.5)*cs;
+    dummy.position.set(x,y,z); dummy.updateMatrix();
+    inst.setMatrixAt(i, dummy.matrix);
+    const [r,g,b] = voxelColor(x,y,z);
+    col.setRGB(r/255,g/255,b/255); inst.setColorAt(i, col);
+  }
+  inst.instanceMatrix.needsUpdate = true;
+  if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+  currentMesh = inst; scene.add(inst);
+}
+
+log('Ready. Upload 6 views, then click Run.');
+log('Depth model takes a few seconds per view on WebGPU.');
+</script>
+</body>
+</html>

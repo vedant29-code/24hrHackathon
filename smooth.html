@@ -1,0 +1,1230 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Photo to 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0e1015; --panel:#161920; --card:#0a0c11; --border:#2a2f3a;
+          --text:#e6e8ee; --muted:#8b93a7; --dim:#5f6779;
+          --accent:#7cc4ff; --good:#7ee787; --warn:#ffcf80; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; overflow:hidden; }
+  .app { display:grid; grid-template-columns:370px 1fr;
+    height:100vh; height:100dvh; }
+
+  .panel { background:var(--panel); border-right:1px solid var(--border);
+    padding:22px; overflow-y:auto; }
+  .brand { font-size:19px; font-weight:700; margin:0 0 3px; letter-spacing:-0.01em; }
+  .tagline { color:var(--muted); font-size:12.5px; margin-bottom:22px; line-height:1.5; }
+
+  /* ---- Steps ---- */
+  .step { margin-bottom:26px; }
+  .step-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .step-num { width:22px; height:22px; border-radius:50%; flex:none;
+    background:var(--border); color:var(--muted); font-size:11px; font-weight:700;
+    display:flex; align-items:center; justify-content:center; }
+  .step.active .step-num { background:var(--accent); color:#06121e; }
+  .step.done .step-num { background:var(--good); color:#06121e; }
+  .step-title { font-size:14px; font-weight:600; }
+  .step-count { margin-left:auto; font-size:11px; color:var(--muted);
+    font-variant-numeric:tabular-nums; }
+  .step-help { font-size:12px; color:var(--muted); line-height:1.55;
+    margin:0 0 12px 32px; }
+  .step-body { margin-left:32px; }
+
+  /* ---- Photo slots ---- */
+  .views { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  .view { position:relative; background:var(--card); border:1px dashed var(--border);
+    border-radius:9px; padding:9px; transition:border-color .15s; }
+  .view:hover { border-color:var(--dim); }
+  .view.filled { border-style:solid; border-color:#2f4a63; }
+  .view .name { font-size:11.5px; font-weight:600; color:var(--text); }
+  .view .hint { font-size:10px; color:var(--dim); line-height:1.4; margin-top:2px;
+    min-height:26px; }
+  .view .picker { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%;
+    height:100%; }
+  .view .cta { margin-top:7px; font-size:10.5px; color:var(--accent);
+    font-weight:600; }
+  .view.filled .cta { color:var(--muted); font-weight:400; }
+  .view .strip { display:flex; gap:4px; margin-top:7px; }
+  .view .strip figure { flex:1; margin:0; }
+  .view .strip canvas { width:100%; display:block; border:1px solid var(--border);
+    border-radius:4px; background:#000; }
+  .view .strip figcaption { font-size:8.5px; color:var(--dim); text-align:center;
+    margin-top:3px; }
+
+  /* ---- Controls ---- */
+  .ctl { margin-bottom:15px; }
+  .ctl > label { display:block; font-size:12.5px; color:var(--text);
+    margin-bottom:3px; font-weight:500; }
+  .ctl .sub { font-size:11px; color:var(--muted); margin-bottom:7px; line-height:1.45; }
+  select, button { width:100%; background:var(--card); color:var(--text);
+    border:1px solid var(--border); border-radius:7px; padding:9px; font-size:13px;
+    font-family:inherit; }
+  select { cursor:pointer; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .ends { display:flex; justify-content:space-between; font-size:10.5px;
+    color:var(--dim); margin-top:1px; }
+  button { cursor:pointer; }
+  .big { background:var(--accent); color:#06121e; border:0; font-weight:700;
+    padding:14px; font-size:14px; border-radius:8px; }
+  .big:disabled { background:var(--border); color:var(--dim); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .secondary { margin-top:8px; }
+
+  details { border-top:1px solid var(--border); padding-top:14px; margin-top:18px; }
+  details summary { cursor:pointer; font-size:12.5px; color:var(--muted);
+    font-weight:600; list-style:none; display:flex; align-items:center; gap:7px; }
+  details summary::-webkit-details-marker { display:none; }
+  details summary::before { content:'▸'; font-size:10px; transition:transform .15s; }
+  details[open] summary::before { transform:rotate(90deg); }
+  details .inner { padding-top:14px; }
+  .tip { background:#0f1620; border:1px solid var(--border); border-radius:7px;
+    padding:9px 11px; font-size:11.5px; color:var(--muted); line-height:1.55;
+    margin-bottom:13px; }
+  .tip b { color:var(--text); }
+
+  /* ---- Stage ---- */
+  .stage { position:relative; }
+  #canvas { width:100%; height:100%; display:block; }
+  .empty { position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center; padding:40px;
+    pointer-events:none; }
+  .empty .icon { font-size:44px; margin-bottom:16px; opacity:.5; }
+  .empty h2 { font-size:17px; margin:0 0 8px; font-weight:600; }
+  .empty p { font-size:13px; color:var(--muted); margin:0; max-width:390px;
+    line-height:1.65; }
+
+  .statusbar { position:absolute; top:18px; left:18px;
+    background:rgba(14,16,21,.85); border:1px solid var(--border); border-radius:9px;
+    padding:11px 14px; font-size:12px; backdrop-filter:blur(10px); max-width:330px; }
+  .statusbar .headline { font-weight:600; font-size:13px; margin-bottom:3px; }
+  .statusbar .detail { color:var(--muted); font-size:11.5px; line-height:1.6; }
+  .statusbar.busy .headline { color:var(--accent); }
+
+  .toolbar { position:absolute; bottom:18px; left:50%; transform:translateX(-50%);
+    display:flex; gap:7px; }
+  .toolbar button { width:auto; padding:8px 15px; font-size:12px;
+    background:rgba(14,16,21,.88); backdrop-filter:blur(10px); }
+
+  .console { position:absolute; bottom:18px; right:18px; width:320px;
+    background:rgba(10,12,17,.88); border:1px solid var(--border); border-radius:9px;
+    backdrop-filter:blur(10px); }
+  .console summary { padding:9px 13px; font-size:11.5px; color:var(--muted);
+    cursor:pointer; list-style:none; font-weight:600; }
+  .console summary::-webkit-details-marker { display:none; }
+  .console[open] summary { border-bottom:1px solid var(--border); }
+  #log { padding:10px 13px; font-family:ui-monospace,monospace; font-size:10.5px;
+    color:var(--muted); max-height:200px; overflow-y:auto; white-space:pre-wrap;
+    line-height:1.7; margin:0; }
+
+  /* CSS grid children default to min-height:auto, which lets a tall panel push
+     the row past the viewport instead of scrolling inside it — with
+     overflow:hidden on body, the overflow is simply clipped and unreachable.
+     min-height:0 is what actually allows overflow-y:auto to engage. */
+  .app > * { min-height: 0; }
+  .panel { scrollbar-width: thin; scrollbar-color: #39404f transparent;
+    overscroll-behavior: contain; padding-bottom: 60px; }
+  .panel::-webkit-scrollbar { width: 10px; }
+  .panel::-webkit-scrollbar-track { background: transparent; }
+  .panel::-webkit-scrollbar-thumb { background: #39404f; border-radius: 5px;
+    border: 2px solid transparent; background-clip: content-box; }
+  .panel::-webkit-scrollbar-thumb:hover { background: #4a5364;
+    background-clip: content-box; border: 2px solid transparent; }
+
+  /* Narrow or short windows: stack the panel above the viewer and let the page
+     itself scroll, rather than trapping controls in a squeezed column. */
+  @media (max-width: 760px), (max-height: 480px) {
+    html, body { height: auto; overflow: auto; }
+    .app { grid-template-columns: 1fr; height: auto; min-height: 100vh; }
+    .panel { border-right: 0; border-bottom: 1px solid var(--border);
+      overflow: visible; max-height: none; }
+    .stage { height: 72vh; min-height: 420px; }
+  }
+
+  /* ---- Photo drop tiles ------------------------------------------------
+     The whole tile is the target, not a small native file button: a large
+     obvious area that also accepts a dragged file, states its own name, and
+     shows what it captured once filled. */
+  .views { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .view { position:relative; background:var(--card,#0a0c11);
+    border:1.5px dashed var(--border); border-radius:10px; padding:10px;
+    min-height:104px; transition:border-color .15s, background .15s;
+    cursor:pointer; display:flex; flex-direction:column; }
+  .view:hover { border-color:#4d5666; background:#0d1017; }
+  .view.hot { border-color:var(--accent); background:#0d1723;
+    border-style:solid; }
+  .view.filled { border-style:solid; border-color:#2f4a63; cursor:default; }
+  .view .picker { position:absolute; inset:0; opacity:0; cursor:pointer;
+    width:100%; height:100%; z-index:2; }
+  .view .name { font-size:11.5px; font-weight:700; letter-spacing:.02em; }
+  .view .hint { font-size:10px; color:var(--dim,#5f6779); line-height:1.4;
+    margin-top:2px; }
+  .view .cta { margin-top:auto; padding-top:8px; font-size:11px;
+    color:var(--accent); font-weight:600; }
+  .view.filled .cta { color:var(--muted); font-weight:400; font-size:10px; }
+  .view .strip { display:flex; gap:4px; margin-top:8px; }
+  .view .strip figure { flex:1; margin:0; }
+  .view .strip canvas { width:100%; display:block; border:1px solid var(--border);
+    border-radius:4px; background:#000; }
+  .view .strip figcaption { font-size:8.5px; color:var(--dim,#5f6779);
+    text-align:center; margin-top:3px; }
+</style>
+<link rel="stylesheet" href="./studio.css">
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div class="app">
+
+<aside class="panel">
+  <div class="brand">Photo to 3D</div>
+  <div class="tagline">
+    Take six photos of an object from six sides, and get back a 3D model you can
+    spin around and download.
+  </div>
+
+  <!-- STEP 1 -->
+  <section class="step active" id="step1">
+    <div class="step-head">
+      <div class="step-num">1</div>
+      <div class="step-title">Add your six photos</div>
+      <div class="step-count" id="photoCount">0 of 6</div>
+    </div>
+    <p class="step-help">
+      Same object, same distance, plain background. Click a box to pick a picture.
+    </p>
+    <div class="step-body">
+      <div class="views" id="views"></div>
+    </div>
+  </section>
+
+  <!-- STEP 2 -->
+  <section class="step" id="step2">
+    <div class="step-head">
+      <div class="step-num">2</div>
+      <div class="step-title">Check the cut-outs</div>
+    </div>
+    <p class="step-help">
+      Under each photo is a black-and-white version. <b>White should be your
+      object, black should be the background.</b> If that looks wrong, change the
+      settings below.
+    </p>
+    <div class="step-body">
+      <div class="ctl">
+        <label>How should we find the object?</label>
+        <select id="mode">
+          <option value="auto">Work it out for me</option>
+          <option value="corner">The background is one solid colour</option>
+          <option value="luma">The object is darker than the background</option>
+          <option value="alpha">The background is transparent</option>
+        </select>
+      </div>
+      <div class="ctl">
+        <label>Cut-out sensitivity</label>
+        <div class="sub">Nudge this if the cut-outs are missing bits of your
+          object, or picking up background.</div>
+        <input id="thr" type="range" min="0.02" max="0.98" value="0.5" step="0.01" />
+        <div class="ends"><span>Grab less</span><span>Grab more</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 3 -->
+  <section class="step" id="step3">
+    <div class="step-head">
+      <div class="step-num">3</div>
+      <div class="step-title">Make the model</div>
+    </div>
+    <div class="step-body">
+      <div class="ctl">
+        <label>How detailed?</label>
+        <select id="res">
+          <option value="64">Quick preview — a few seconds</option>
+          <option value="112" selected>Normal — recommended</option>
+          <option value="144">Fine</option>
+          <option value="176">Maximum — slowest</option>
+        </select>
+      </div>
+      <button id="build" class="big" disabled>Add photos first</button>
+      <button id="exportBtn" class="secondary" disabled>Download 3D file (.obj)</button>
+    </div>
+  </section>
+
+  <details id="lookPanel">
+    <summary>Change how it looks</summary>
+    <div class="inner">
+      <div class="ctl">
+        <label>Surface material</label>
+        <select id="finish">
+          <option value="porcelain">Glossy white</option>
+          <option value="clay">Matte clay</option>
+          <option value="pearl">Pearl</option>
+          <option value="normals">Rainbow (for spotting bumps)</option>
+        </select>
+      </div>
+      <div class="ctl">
+        <label>Smoothness</label>
+        <div class="sub">Softens lumps and noise. Too much loses fine detail.</div>
+        <input id="smooth" type="range" min="0" max="6" value="2" step="1" />
+        <div class="ends"><span>Crisp</span><span>Very soft</span></div>
+      </div>
+      <div class="ctl">
+        <label>Thickness</label>
+        <div class="sub">Shrink-wraps or puffs up the whole shape. Updates instantly.</div>
+        <input id="offset" type="range" min="-0.03" max="0.03" value="0" step="0.002" />
+        <div class="ends"><span>Slimmer</span><span>Puffier</span></div>
+      </div>
+      <div class="ctl">
+        <label>Shading style</label>
+        <select id="flat">
+          <option value="0">Smooth</option>
+          <option value="1">Faceted, like cut glass</option>
+        </select>
+      </div>
+      <div class="ctl">
+        <label>Realistic corner shadows</label>
+        <div class="sub">Adds soft shading in nooks. Turn off if it feels slow.</div>
+        <select id="ao"><option value="1">On</option><option value="0">Off</option></select>
+      </div>
+    </div>
+  </details>
+
+  <details id="advPanel">
+    <summary>Advanced: AI surface detail</summary>
+    <div class="inner">
+      <div class="tip">
+        Your photos only show the object's <b>outline</b> from each side, so
+        dents and bulges in the middle of a flat face can't be seen. An AI can
+        guess them from shading. It's a <b>guess</b>, not a measurement — start
+        low and stop when it stops looking better.
+      </div>
+      <div class="ctl">
+        <label>How much AI guessing?</label>
+        <input id="inf" type="range" min="0" max="1" value="0" step="0.01" />
+        <div class="ends"><span>None</span><span>A lot</span></div>
+      </div>
+      <div class="ctl">
+        <label>Processing speed</label>
+        <select id="backend">
+          <option value="webgpu">Fast (uses your graphics card)</option>
+          <option value="wasm">Compatible (slower, works everywhere)</option>
+        </select>
+      </div>
+      <button id="runDepth" disabled>Analyse photos with AI</button>
+      <div class="sub" style="margin-top:7px; font-size:11px; color:var(--muted);">
+        Downloads about 50&nbsp;MB the first time.
+      </div>
+    </div>
+  </details>
+</aside>
+
+<main class="stage">
+  <canvas id="canvas"></canvas>
+
+  <div class="empty" id="empty">
+    <div class="icon">🧊</div>
+    <h2>Your 3D model will appear here</h2>
+    <p id="emptyText">
+      Start by adding six photos on the left — one from the front, back, each
+      side, above and below.
+    </p>
+  </div>
+
+  <div class="statusbar" id="statusbar" style="display:none;">
+    <div class="headline" id="statusHead"></div>
+    <div class="detail" id="statusDetail"></div>
+  </div>
+
+  <div class="toolbar">
+    <button id="reset">Recentre</button>
+    <button id="rot">Stop spinning</button>
+    <button id="wire">Show wireframe</button>
+  </div>
+
+  <details class="console">
+    <summary>Technical details</summary>
+    <div id="log"></div>
+  </details>
+</main>
+
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { extractMatte } from './whitematte.js';
+import { makeDropTile, makeBulkDrop } from './dropslot.js';
+
+const $ = (id) => document.getElementById(id);
+const viewsEl=$('views'), modeEl=$('mode'), thrEl=$('thr'),
+      resEl=$('res'), smoothEl=$('smooth'), offsetEl=$('offset'), infEl=$('inf'),
+      backendEl=$('backend'), runDepthBtn=$('runDepth'), finishEl=$('finish'),
+      flatEl=$('flat'), aoEl=$('ao'), buildBtn=$('build'), exportBtn=$('exportBtn'),
+      canvasEl=$('canvas'), logEl=$('log'), emptyEl=$('empty'), emptyTextEl=$('emptyText'),
+      photoCountEl=$('photoCount'), statusbarEl=$('statusbar'),
+      statusHeadEl=$('statusHead'), statusDetailEl=$('statusDetail');
+
+const log = (m) => {
+  logEl.textContent += `[${new Date().toLocaleTimeString()}] ${m}\n`;
+  logEl.scrollTop = logEl.scrollHeight;
+};
+// Plain-language status, kept separate from the technical log so neither has to
+// compromise: the log stays precise, this stays readable.
+function setStatus(headline, detail, busy) {
+  statusbarEl.style.display = 'block';
+  statusbarEl.classList.toggle('busy', !!busy);
+  statusHeadEl.textContent = headline;
+  statusDetailEl.innerHTML = detail || '';
+}
+
+// Yields to the event loop so the page can paint mid-computation. setTimeout is
+// clamped to 4ms when nested and to a full second in a background tab, which
+// turned a 3-second build into a 14-second one whenever the tab lost focus. A
+// MessageChannel task is subject to neither clamp.
+const breathe = (() => {
+  const ch = new MessageChannel();
+  let pending = null;
+  ch.port1.onmessage = () => { const r = pending; pending = null; if (r) r(); };
+  return () => new Promise((resolve) => { pending = resolve; ch.port2.postMessage(0); });
+})();
+
+/* Recomputing cut-outs means six flood fills and twelve distance transforms.
+   Doing that on every tick of a slider drag locks the page solid, so it waits
+   until the user actually pauses. Re-extracting the surface is much cheaper but
+   still worth coalescing while a slider is moving. */
+function debounce(fn, ms) {
+  let t = null;
+  return () => { clearTimeout(t); t = setTimeout(fn, ms); };
+}
+thrEl.oninput = debounce(() => refreshSilhouettes(), 200);
+offsetEl.oninput = debounce(() => { if (lastField) extractSurface(lastField); }, 90);
+modeEl.onchange = refreshSilhouettes;
+finishEl.onchange = () => applyMaterial();
+flatEl.onchange = () => applyMaterial();
+aoEl.onchange = () => rebuildComposer();
+
+/* =========================================================================
+   Same geometric convention as the block-based screen, so a set of photos
+   works in either without re-tuning: unit cube centred on the origin, Y up,
+   front camera on +Z.
+   ========================================================================= */
+const SLOTS = [
+  { key:'front',  label:'Front',      kind:'side', angle:0,
+    hint:'Facing the front of the object' },
+  { key:'right',  label:'Right side', kind:'side', angle:Math.PI/2,
+    hint:'Its front points to your left' },
+  { key:'back',   label:'Back',       kind:'side', angle:Math.PI,
+    hint:'Facing the back of the object' },
+  { key:'left',   label:'Left side',  kind:'side', angle:3*Math.PI/2,
+    hint:'Its front points to your right' },
+  { key:'top',    label:'From above', kind:'top',  angle:0,
+    hint:'Front points to the bottom of the photo' },
+  { key:'bottom', label:'From below', kind:'bottom', angle:0,
+    hint:'Front points to the top of the photo' },
+];
+const slots = SLOTS.map((s) => ({ ...s, imageData:null, sil:null, bbox:null,
+                                  xform:null, sdf:null, depth:null }));
+
+function project(slot, x, y, z) {
+  if (slot.kind === 'side') {
+    const c = Math.cos(slot.angle), s = Math.sin(slot.angle);
+    return { u: x*c - z*s, v: y, t: x*s + z*c };
+  }
+  if (slot.kind === 'top') return { u: x, v: -z, t:  y };
+  return                          { u: x, v:  z, t: -y };
+}
+function toImage(slot, p) {
+  const t = slot.xform;
+  return { u: t.ox + p.u * t.sx, v: t.oy - p.v * t.sy };
+}
+
+/* -------------------------------------------------------------------------
+   Photo slots
+   ------------------------------------------------------------------------- */
+function buildSlotUI() {
+  viewsEl.innerHTML = '';
+  slots.forEach((s, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'view' + (s.imageData ? ' filled' : '');
+    wrap.innerHTML = `<div class="name">${s.label}</div><div class="hint">${s.hint}</div>`;
+
+    makeDropTile(wrap, (f) => acceptFile(i, f));
+
+    const cta = document.createElement('div');
+    cta.className = 'cta';
+    cta.textContent = s.imageData ? 'Click or drop to replace' : '+ Click or drop a photo';
+    wrap.appendChild(cta);
+
+    if (s.imageData) {
+      const strip = document.createElement('div');
+      strip.className = 'strip';
+      strip.appendChild(fig(thumbOfImage(s.imageData, 120), 'photo'));
+      if (s.sil) strip.appendChild(fig(thumbOfMask(s.sil, 120), 'cut-out'));
+      if (s.depth) strip.appendChild(fig(thumbOfDepth(s.depth, 120), 'depth'));
+      wrap.appendChild(strip);
+    }
+    viewsEl.appendChild(wrap);
+  });
+  updateProgress();
+}
+
+async function acceptFile(i, file) {
+  const s = slots[i];
+  const img = await loadImage(URL.createObjectURL(file));
+  s.imageData = imageToImageData(img);
+  s.depth = null;
+  if ('depthNorm' in s) s.depthNorm = null;
+  computeSilhouette(s);
+  buildSlotUI();
+  log(`${s.label}: ${img.naturalWidth}x${img.naturalHeight}`);
+}
+
+// Dragging a folder of six onto the grid fills the empty tiles in order.
+makeBulkDrop(viewsEl,
+  () => slots.map((s, i) => ({ el: viewsEl.children[i], filled: !!s.imageData, index: i })),
+  (i, f) => acceptFile(i, f));
+
+function fig(canvas, caption) {
+  const f = document.createElement('figure');
+  f.appendChild(canvas);
+  const c = document.createElement('figcaption');
+  c.textContent = caption;
+  f.appendChild(c);
+  return f;
+}
+
+// Walks the three steps forward as photos arrive, so the panel always shows
+// what to do next instead of every option at once.
+function updateProgress() {
+  const n = slots.filter((s) => s.imageData).length;
+  const ready = n === 6;
+  photoCountEl.textContent = `${n} of 6`;
+  buildBtn.disabled = !ready;
+  runDepthBtn.disabled = !ready;
+  buildBtn.textContent = ready
+    ? 'Make the 3D model'
+    : `Add ${6-n} more photo${6-n === 1 ? '' : 's'}`;
+
+  $('step1').className = 'step' + (ready ? ' done' : ' active');
+  $('step2').className = 'step' + (n > 0 ? (ready ? ' done' : ' active') : '');
+  $('step3').className = 'step' + (ready ? ' active' : '');
+
+  if (!surfaceMesh) {
+    emptyTextEl.textContent = ready
+      ? 'All six photos are in. Check the cut-outs look right, then press "Make the 3D model".'
+      : n === 0
+        ? 'Start by adding six photos on the left — one from the front, back, each side, above and below.'
+        : `${n} of 6 added. Keep going — all six are needed before a model can be built.`;
+  }
+}
+
+function loadImage(url) {
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => { res(im); URL.revokeObjectURL(url); };
+    im.onerror = rej; im.src = url;
+  });
+}
+function imageToImageData(img) {
+  const MAX = 512;
+  const k = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.max(1, Math.round(img.naturalWidth * k));
+  const h = Math.max(1, Math.round(img.naturalHeight * k));
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently:true });
+  ctx.drawImage(img, 0, 0, w, h);
+  return ctx.getImageData(0, 0, w, h);
+}
+
+/* -------------------------------------------------------------------------
+   Cut-outs (silhouettes)
+   ------------------------------------------------------------------------- */
+function maskAlpha(px, w, h, thr) {
+  const o = new Uint8Array(w*h);
+  for (let i=0,p=0;i<w*h;i++,p+=4) o[i] = (px[p+3]/255) > thr ? 1 : 0;
+  return o;
+}
+function maskLuma(px, w, h, thr) {
+  const o = new Uint8Array(w*h);
+  for (let i=0,p=0;i<w*h;i++,p+=4) {
+    const l = (0.2126*px[p] + 0.7152*px[p+1] + 0.0722*px[p+2]) / 255;
+    o[i] = (px[p+3] > 8 && l < thr) ? 1 : 0;
+  }
+  return o;
+}
+function maskCorner(px, w, h, thr) {
+  let r=0,g=0,b=0,n=0;
+  const band = Math.max(1, Math.round(Math.min(w,h)*0.03));
+  const add = (x,y) => { const p=(y*w+x)*4; r+=px[p]; g+=px[p+1]; b+=px[p+2]; n++; };
+  for (let y=0;y<band;y++) for (let x=0;x<w;x++) add(x,y);
+  for (let y=h-band;y<h;y++) for (let x=0;x<w;x++) add(x,y);
+  for (let y=band;y<h-band;y++) {
+    for (let x=0;x<band;x++) add(x,y);
+    for (let x=w-band;x<w;x++) add(x,y);
+  }
+  r/=n; g/=n; b/=n;
+  const cut = (1-thr)*0.6;
+  const o = new Uint8Array(w*h);
+  for (let i=0,p=0;i<w*h;i++,p+=4) {
+    if (px[p+3] < 8) { o[i]=0; continue; }
+    const dr=px[p]-r, dg=px[p+1]-g, db=px[p+2]-b;
+    o[i] = (Math.sqrt(dr*dr+dg*dg+db*db)/441.673) > cut ? 1 : 0;
+  }
+  return o;
+}
+function maskQuality(mask, w, h) {
+  let on = 0;
+  for (let i=0;i<mask.length;i++) on += mask[i];
+  const frac = on / mask.length;
+  if (frac < 0.01 || frac > 0.95) return -1;
+  let border = 0, tot = 0;
+  for (let x=0;x<w;x++){ border += mask[x] + mask[(h-1)*w+x]; tot += 2; }
+  for (let y=0;y<h;y++){ border += mask[y*w] + mask[y*w+w-1]; tot += 2; }
+  return (1 - Math.min(1, Math.abs(frac-0.35)/0.45))*0.5 + (1 - border/tot)*0.5;
+}
+function cleanMask(mask, w, h) {
+  const outside = new Uint8Array(w*h);
+  const st = [];
+  const push = (i) => { if (!mask[i] && !outside[i]) { outside[i]=1; st.push(i); } };
+  for (let x=0;x<w;x++){ push(x); push((h-1)*w+x); }
+  for (let y=0;y<h;y++){ push(y*w); push(y*w+w-1); }
+  while (st.length) {
+    const i = st.pop(), x = i % w, y = (i-x)/w;
+    if (x>0) push(i-1); if (x<w-1) push(i+1);
+    if (y>0) push(i-w); if (y<h-1) push(i+w);
+  }
+  const filled = new Uint8Array(w*h);
+  for (let i=0;i<w*h;i++) filled[i] = outside[i] ? 0 : 1;
+  const labels = new Int32Array(w*h).fill(-1);
+  let best=-1, bestSize=0, lab=0;
+  for (let seed=0; seed<w*h; seed++) {
+    if (!filled[seed] || labels[seed] !== -1) continue;
+    let size=0; const s2=[seed]; labels[seed]=lab;
+    while (s2.length) {
+      const i=s2.pop(); size++;
+      const x=i%w, y=(i-x)/w;
+      const nb=[];
+      if (x>0) nb.push(i-1); if (x<w-1) nb.push(i+1);
+      if (y>0) nb.push(i-w); if (y<h-1) nb.push(i+w);
+      for (const j of nb) if (filled[j] && labels[j]===-1) { labels[j]=lab; s2.push(j); }
+    }
+    if (size>bestSize){ bestSize=size; best=lab; }
+    lab++;
+  }
+  const out = new Uint8Array(w*h);
+  if (best>=0) for (let i=0;i<w*h;i++) out[i] = labels[i]===best ? 1 : 0;
+  return out;
+}
+
+function computeSilhouette(s) {
+  /* Delegated to the white-background matte, which models the backdrop as a
+     gentle gradient rather than one flat colour, rejects neutral cast shadow
+     without eating dark parts of the subject, recovers white or blown-out areas
+     by enclosure, and bridges hairline breaks so thin antennas survive. */
+  const m = extractMatte(s.imageData, {
+    sensitivity: +thrEl.value,
+    shadowRemoval: 0.65,
+    fillHoles: true,
+  });
+  s.sil = { mask: m.mask, w: m.w, h: m.h, mode: 'white-bg' };
+  s.matte = m;
+  s.bbox = bboxOf(m.mask, m.w, m.h);
+  s.sdf = signedDistance(m.mask, m.w, m.h);
+}
+
+function bboxOf(mask, w, h) {
+  let x0=w,y0=h,x1=-1,y1=-1;
+  for (let y=0;y<h;y++) for (let x=0;x<w;x++) {
+    if (!mask[y*w+x]) continue;
+    if (x<x0) x0=x; if (x>x1) x1=x;
+    if (y<y0) y0=y; if (y>y1) y1=y;
+  }
+  if (x1<0) return null;
+  return { x0,y0,x1,y1, cx:(x0+x1)/2, cy:(y0+y1)/2, w:x1-x0+1, h:y1-y0+1 };
+}
+function refreshSilhouettes() {
+  let any = false;
+  for (const s of slots) if (s.imageData) { computeSilhouette(s); any = true; }
+  if (any) buildSlotUI();
+}
+
+/* -------------------------------------------------------------------------
+   Distance fields
+
+   A cut-out is a cliff: a pixel is either object or background, nothing in
+   between, and a surface built from cliffs comes out as a staircase. Replacing
+   it with a distance measurement — how far is this pixel from the object's
+   edge, positive inside and negative outside — turns that cliff into a ramp.
+   Reading values off a ramp lets the final surface pass between pixels rather
+   than being pinned to them, and that is what makes it smooth.
+
+   Distances are exact rather than approximate, using Felzenszwalb &
+   Huttenlocher's lower-envelope method. The cheaper approximation has a
+   diagonal bias that would show up as faint ridges across the model.
+   ------------------------------------------------------------------------- */
+function edt1d(f, n, d, v, z) {
+  let k = 0;
+  v[0] = 0; z[0] = -Infinity; z[1] = Infinity;
+  for (let q = 1; q < n; q++) {
+    let s = ((f[q] + q*q) - (f[v[k]] + v[k]*v[k])) / (2*q - 2*v[k]);
+    while (s <= z[k]) {
+      k--;
+      s = ((f[q] + q*q) - (f[v[k]] + v[k]*v[k])) / (2*q - 2*v[k]);
+    }
+    k++; v[k] = q; z[k] = s; z[k+1] = Infinity;
+  }
+  k = 0;
+  for (let q = 0; q < n; q++) {
+    while (z[k+1] < q) k++;
+    const dx = q - v[k];
+    d[q] = dx*dx + f[v[k]];
+  }
+}
+function edt2d(inside, w, h) {
+  const INF = 1e20;
+  const g = new Float64Array(w*h);
+  for (let i=0;i<w*h;i++) g[i] = inside[i] ? INF : 0;
+  const n = Math.max(w, h);
+  const f = new Float64Array(n), d = new Float64Array(n);
+  const v = new Int32Array(n), z = new Float64Array(n+1);
+  for (let x=0; x<w; x++) {
+    for (let y=0; y<h; y++) f[y] = g[y*w+x];
+    edt1d(f, h, d, v, z);
+    for (let y=0; y<h; y++) g[y*w+x] = d[y];
+  }
+  for (let y=0; y<h; y++) {
+    const row = y*w;
+    for (let x=0; x<w; x++) f[x] = g[row+x];
+    edt1d(f, w, d, v, z);
+    for (let x=0; x<w; x++) g[row+x] = d[x];
+  }
+  return g;
+}
+function signedDistance(mask, w, h) {
+  const inv = new Uint8Array(w*h);
+  for (let i=0;i<w*h;i++) inv[i] = mask[i] ? 0 : 1;
+  const dOut = edt2d(mask, w, h);
+  const dIn  = edt2d(inv,  w, h);
+  const sdf = new Float32Array(w*h);
+  for (let i=0;i<w*h;i++) sdf[i] = mask[i] ? Math.sqrt(dOut[i]) : -Math.sqrt(dIn[i]);
+  return { data: sdf, w, h };
+}
+function sampleSDF(sdf, u, v) {
+  const fx = u * sdf.w - 0.5, fy = v * sdf.h - 0.5;
+  const x0 = Math.floor(fx), y0 = Math.floor(fy);
+  const tx = fx - x0, ty = fy - y0;
+  const cx = (x) => Math.min(sdf.w-1, Math.max(0, x));
+  const cy = (y) => Math.min(sdf.h-1, Math.max(0, y));
+  const a = sdf.data[cy(y0)*sdf.w + cx(x0)];
+  const b = sdf.data[cy(y0)*sdf.w + cx(x0+1)];
+  const c = sdf.data[cy(y0+1)*sdf.w + cx(x0)];
+  const d = sdf.data[cy(y0+1)*sdf.w + cx(x0+1)];
+  const top = a + (b-a)*tx, bot = c + (d-c)*tx;
+  let val = top + (bot-top)*ty;
+  if (u < 0 || u > 1 || v < 0 || v > 1) {
+    const ox = Math.max(0, Math.max(-u, u-1)) * sdf.w;
+    const oy = Math.max(0, Math.max(-v, v-1)) * sdf.h;
+    val -= Math.hypot(ox, oy);
+  }
+  return val;
+}
+function sampleDepth(d, u, v) {
+  if (u<0||u>=1||v<0||v>=1) return -1;
+  const x = (u*d.width)|0, y = (v*d.height)|0;
+  return d.data[y*d.width + x] / 255;
+}
+
+/* -------------------------------------------------------------------------
+   Lining the photos up
+
+   Photos are never framed identically, so each cut-out is measured and scaled
+   to describe the same object. The four side views share the object's height,
+   which is the one dimension all of them see, so that is what ties them
+   together — and the scale is chosen so even the widest view still fits,
+   otherwise anything sticking out sideways would be cropped away.
+   ------------------------------------------------------------------------- */
+function computeAlignment() {
+  const fill = 0.9;
+  const frac = (s) => ({ w: s.bbox.w/s.sil.w, h: s.bbox.h/s.sil.h,
+                         aspect: s.sil.w/s.sil.h });
+  const sides = slots.filter((s) => s.kind==='side' && s.bbox);
+  const identity = () => ({ sx:1, sy:1, ox:0.5, oy:0.5 });
+  if (!sides.length) { for (const s of slots) s.xform = identity(); return; }
+
+  let widest = 1;
+  for (const s of sides) {
+    const f = frac(s);
+    if (f.h > 0) widest = Math.max(widest, f.w*f.aspect/f.h);
+  }
+  const heightUnits = fill / widest;
+  for (const s of sides) {
+    const f = frac(s);
+    const sy = f.h / heightUnits;
+    s.xform = { sx: sy/f.aspect, sy, ox: s.bbox.cx/s.sil.w, oy: s.bbox.cy/s.sil.h };
+  }
+  const extentOf = (key, fb) => {
+    const s = slots.find((v) => v.key===key && v.bbox);
+    if (!s) return fb;
+    return frac(s).w / s.xform.sx;
+  };
+  const eX = extentOf('front', heightUnits);
+  const eZ = extentOf('right', eX);
+  for (const s of slots) {
+    if (s.kind === 'side') continue;
+    if (!s.bbox) { s.xform = identity(); continue; }
+    const f = frac(s);
+    s.xform = { sx: f.w/Math.max(1e-6,eX), sy: f.h/Math.max(1e-6,eZ),
+                ox: s.bbox.cx/s.sil.w, oy: s.bbox.cy/s.sil.h };
+  }
+}
+
+/* -------------------------------------------------------------------------
+   Building the solid
+
+   Every view contributes a distance, converted from pixels into shared units.
+   A point belongs to the object only where all six views agree, and its
+   distance to the edge of that shared region is the smallest of the six — so
+   taking the minimum produces the combined shape's own distance field, not
+   merely an outline of it.
+   ------------------------------------------------------------------------- */
+let lastField = null;
+
+async function buildField(onProgress) {
+  const N = +resEl.value;
+  const influence = +infEl.value;
+  const useDepth = influence > 0 && slots.every((s) => s.depth);
+  computeAlignment();
+
+  const t0 = performance.now();
+  const field = new Float32Array(N*N*N);
+  const step = 1 / N;
+  const unitPx = slots.map((s) => Math.max(1e-6, s.xform.sx * s.sil.w));
+
+  for (let iz=0; iz<N; iz++) {
+    // Hand the thread back every few slices so the page keeps responding and
+    // the progress readout updates while this runs.
+    if ((iz & 7) === 0) {
+      if (onProgress) onProgress(iz / N * 0.85);
+      await breathe();
+    }
+    const z = -0.5 + (iz + 0.5) * step;
+    for (let iy=0; iy<N; iy++) {
+      const y = -0.5 + (iy + 0.5) * step;
+      const base = iz*N*N + iy*N;
+      for (let ix=0; ix<N; ix++) {
+        const x = -0.5 + (ix + 0.5) * step;
+        let min = Infinity;
+        for (let vi=0; vi<slots.length; vi++) {
+          const s = slots[vi];
+          const p = project(s, x, y, z);
+          const im = toImage(s, p);
+          let d = sampleSDF(s.sdf, im.u, im.v) / unitPx[vi];
+          if (useDepth) {
+            const dm = sampleDepth(s.depth, im.u, im.v);
+            if (dm >= 0) {
+              // The AI only reports what is nearer than what, never by how
+              // much, so it is applied as a bounded nudge rather than as a
+              // hard surface position.
+              const surfaceT = (dm - 0.5) * influence;
+              d = Math.min(d, (surfaceT + 0.5) - p.t);
+            }
+          }
+          if (d < min) min = d;
+        }
+        field[base + ix] = min;
+      }
+    }
+  }
+
+  let smoothed = field;
+  const passes = +smoothEl.value;
+  for (let i=0; i<passes; i++) {
+    if (onProgress) onProgress(0.85 + 0.12*(i+1)/Math.max(1,passes));
+    await breathe();
+    smoothed = blur3(smoothed, N);
+  }
+  if (onProgress) onProgress(0.97);
+  await breathe();
+
+  log(`Field ${N}^3 built in ${((performance.now()-t0)/1000).toFixed(2)}s` +
+      (passes ? `, ${passes} smoothing pass${passes>1?'es':''}` : '') +
+      (useDepth ? `, AI relief ${influence.toFixed(2)}` : ''));
+  return { field: smoothed, N };
+}
+
+// Separable 3x3x3 box blur — three cheap 1D passes rather than 27 samples each.
+function blur3(src, N) {
+  const tmp = new Float32Array(N*N*N);
+  const out = new Float32Array(N*N*N);
+  const idx = (x,y,z) => z*N*N + y*N + x;
+  const cl = (v) => v < 0 ? 0 : (v > N-1 ? N-1 : v);
+  for (let z=0;z<N;z++) for (let y=0;y<N;y++) for (let x=0;x<N;x++)
+    tmp[idx(x,y,z)] = (src[idx(cl(x-1),y,z)] + src[idx(x,y,z)] + src[idx(cl(x+1),y,z)])/3;
+  for (let z=0;z<N;z++) for (let y=0;y<N;y++) for (let x=0;x<N;x++)
+    out[idx(x,y,z)] = (tmp[idx(x,cl(y-1),z)] + tmp[idx(x,y,z)] + tmp[idx(x,cl(y+1),z)])/3;
+  for (let z=0;z<N;z++) for (let y=0;y<N;y++) for (let x=0;x<N;x++)
+    tmp[idx(x,y,z)] = (out[idx(x,y,cl(z-1))] + out[idx(x,y,z)] + out[idx(x,y,cl(z+1))])/3;
+  return tmp;
+}
+
+/* -------------------------------------------------------------------------
+   Three.js
+   ------------------------------------------------------------------------- */
+const renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf1f0ec);
+const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 100);
+camera.position.set(1.15, 0.85, 1.5);
+const controls = new OrbitControls(camera, canvasEl);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.9;
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const key = new THREE.DirectionalLight(0xffffff, 2.0);
+key.position.set(2.2, 3.2, 2.0);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.near = 0.5; key.shadow.camera.far = 12;
+key.shadow.camera.left = -1.3; key.shadow.camera.right = 1.3;
+key.shadow.camera.top = 1.3; key.shadow.camera.bottom = -1.3;
+key.shadow.bias = -0.0006; key.shadow.normalBias = 0.01;
+scene.add(key);
+const fillL = new THREE.DirectionalLight(0xdfe8ff, 0.5);
+fillL.position.set(-2.4, 0.8, -1.5); scene.add(fillL);
+const rim = new THREE.DirectionalLight(0xffffff, 0.65);
+rim.position.set(-0.5, -1.6, -2.2); scene.add(rim);
+scene.add(new THREE.HemisphereLight(0xffffff, 0xcfcbc2, 0.35));
+
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(14,14), new THREE.ShadowMaterial({ opacity:0.20 })
+);
+ground.rotation.x = -Math.PI/2; ground.position.y = -0.62;
+ground.receiveShadow = true; scene.add(ground);
+
+let surfaceMesh = null;
+let composer = null;
+let wireframe = false;
+
+function makeMaterial() {
+  const flat = flatEl.value === '1';
+  switch (finishEl.value) {
+    case 'normals':
+      return new THREE.MeshNormalMaterial({ flatShading: flat, wireframe });
+    case 'clay':
+      return new THREE.MeshStandardMaterial({
+        color: 0xd8d2c6, roughness: 0.95, metalness: 0.0,
+        envMapIntensity: 0.55, flatShading: flat, wireframe });
+    case 'pearl':
+      return new THREE.MeshPhysicalMaterial({
+        color: 0xdcdae2, roughness: 0.26, metalness: 0.0,
+        clearcoat: 1.0, clearcoatRoughness: 0.18, iridescence: 0.35,
+        envMapIntensity: 1.1, flatShading: flat, wireframe });
+    default:
+      return new THREE.MeshPhysicalMaterial({
+        color: 0xdedbd4, roughness: 0.38, metalness: 0.0,
+        clearcoat: 0.55, clearcoatRoughness: 0.3,
+        envMapIntensity: 0.9, flatShading: flat, wireframe });
+  }
+}
+function applyMaterial() {
+  if (!surfaceMesh) return;
+  surfaceMesh.material.dispose();
+  surfaceMesh.material = makeMaterial();
+}
+function rebuildComposer() {
+  const w = Math.max(1, canvasEl.clientWidth), h = Math.max(1, canvasEl.clientHeight);
+  if (aoEl.value !== '1') { composer = null; return; }
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const ssao = new SSAOPass(scene, camera, w, h);
+  ssao.kernelRadius = 0.03; ssao.minDistance = 0.001; ssao.maxDistance = 0.08;
+  composer.addPass(ssao);
+  composer.addPass(new OutputPass());
+  composer.setSize(w, h);
+}
+function resize() {
+  const w = canvasEl.clientWidth, h = canvasEl.clientHeight;
+  if (w && h && (canvasEl.width !== w || canvasEl.height !== h)) {
+    renderer.setSize(w, h, false);
+    camera.aspect = w/h; camera.updateProjectionMatrix();
+    if (composer) composer.setSize(w, h);
+  }
+}
+(function animate(){
+  resize(); controls.update();
+  if (composer) composer.render(); else renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+})();
+rebuildComposer();
+
+$('reset').onclick = () => {
+  camera.position.set(1.15, 0.85, 1.5);
+  controls.target.set(0,0,0); controls.update();
+};
+$('rot').onclick = (e) => {
+  controls.autoRotate = !controls.autoRotate;
+  e.target.textContent = controls.autoRotate ? 'Stop spinning' : 'Start spinning';
+};
+$('wire').onclick = (e) => {
+  wireframe = !wireframe;
+  e.target.textContent = wireframe ? 'Show solid' : 'Show wireframe';
+  applyMaterial();
+};
+
+/* -------------------------------------------------------------------------
+   Turning the solid into a surface
+   ------------------------------------------------------------------------- */
+function extractSurface({ field, N }) {
+  // Rebuilds happen on every slider nudge; without disposing the old GPU
+  // buffers each one leaks a full mesh's worth of memory.
+  if (surfaceMesh) {
+    scene.remove(surfaceMesh);
+    surfaceMesh.material.dispose();
+    surfaceMesh.geometry.dispose();
+    surfaceMesh = null;
+  }
+  const t0 = performance.now();
+  /* Polygon budget. MarchingCubes allocates a fixed buffer and simply stops
+     emitting once it is full — no error, just a model with holes and stray
+     open edges, which is indistinguishable from a genuine reconstruction
+     failure. A closed surface needs roughly 8 triangles per N^2, so the budget
+     is set well above that and truncation is reported if it is ever reached. */
+  const maxPoly = Math.min(2000000, Math.max(150000, Math.round(N*N*14)));
+  const mc = new MarchingCubes(N, makeMaterial(), true, false, maxPoly);
+
+  /* MarchingCubes treats a sample as inside when it is *below* the cut level,
+     while a distance field is positive inside. Copying it across unflipped
+     builds the surrounding air instead of the object — the model turns inside
+     out and runs to the edges of the grid. Negating both keeps the thickness
+     slider's meaning: positive puffs up, negative slims down. */
+  const size2 = N*N;
+  for (let z=0; z<N; z++)
+    for (let y=0; y<N; y++)
+      for (let x=0; x<N; x++)
+        mc.field[size2*z + N*y + x] = -field[z*size2 + y*N + x];
+  mc.isolation = -(+offsetEl.value);
+
+  mc.update();
+  if (mc.count >= mc.maxCount - 3) {
+    log(`WARNING: hit the ${maxPoly.toLocaleString()}-triangle limit at detail ` +
+        `${N}³ — the surface is incomplete. Lower the detail setting.`);
+  }
+  mc.scale.setScalar(0.5);
+  mc.castShadow = true; mc.receiveShadow = true; mc.frustumCulled = false;
+  surfaceMesh = mc;
+  scene.add(mc);
+
+  const tris = Math.floor((mc.count || 0) / 3);
+  log(`Surface extracted in ${((performance.now()-t0)/1000).toFixed(2)}s — ` +
+      `${tris.toLocaleString()} triangles`);
+
+  emptyEl.style.display = tris ? 'none' : 'flex';
+  exportBtn.disabled = tris === 0;
+
+  if (tris === 0) {
+    setStatus('Nothing came out',
+      'The cut-outs may not overlap. Go back to step 2 and check that white ' +
+      'really is your object in every photo.');
+    emptyTextEl.textContent =
+      'No shape could be built. Check the cut-outs in step 2 — white should be ' +
+      'your object, black should be the background.';
+  } else {
+    setStatus('Model ready',
+      `Made of <b>${tris.toLocaleString()}</b> tiny surfaces.<br>` +
+      'Drag to spin it, scroll to zoom.');
+  }
+  const box = new THREE.Box3().setFromObject(mc);
+  if (isFinite(box.min.y)) ground.position.y = box.min.y - 0.02;
+}
+
+/* -------------------------------------------------------------------------
+   Optional AI depth
+   ------------------------------------------------------------------------- */
+let depthPipeline = null, loadedBackend = null;
+runDepthBtn.onclick = async () => {
+  runDepthBtn.disabled = true;
+  const label = runDepthBtn.textContent;
+  try {
+    setStatus('Starting the AI', 'Downloading the model — about 50 MB, once only.', true);
+    const { pipeline, env, RawImage } =
+      await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2');
+    env.allowLocalModels = false; env.useBrowserCache = false;
+    env.useFSCache = false; env.useCustomCache = false;
+    const backend = backendEl.value;
+    if (!depthPipeline || loadedBackend !== backend) {
+      log(`Loading depth model on ${backend}...`);
+      const t0 = performance.now();
+      depthPipeline = await pipeline('depth-estimation',
+        'onnx-community/depth-anything-v2-small', { device: backend, dtype:'fp32' });
+      loadedBackend = backend;
+      log(`Model ready in ${((performance.now()-t0)/1000).toFixed(2)}s`);
+    }
+    let done = 0;
+    for (const s of slots) {
+      runDepthBtn.textContent = `Analysing ${s.label}…`;
+      setStatus('Analysing your photos', `${done} of 6 done.`, true);
+      const c = document.createElement('canvas');
+      c.width = s.imageData.width; c.height = s.imageData.height;
+      c.getContext('2d').putImageData(s.imageData, 0, 0);
+      const image = await RawImage.fromURL(c.toDataURL('image/png'));
+      const t0 = performance.now();
+      const { depth } = await depthPipeline(image);
+      s.depth = { width: depth.width, height: depth.height,
+                  data: Uint8Array.from(depth.data) };
+      log(`  ${s.label} depth in ${((performance.now()-t0)/1000).toFixed(2)}s`);
+      done++;
+      buildSlotUI();
+    }
+    setStatus('AI analysis done',
+      'Now raise "How much AI guessing?" and press Make the 3D model again.');
+  } catch (err) {
+    log(`Depth ERROR: ${err.message}`);
+    setStatus('The AI step failed',
+      'You can still build a model without it — just press Make the 3D model.');
+    console.error(err);
+  } finally {
+    runDepthBtn.textContent = label;
+    runDepthBtn.disabled = false;
+  }
+};
+
+/* -------------------------------------------------------------------------
+   Thumbnails
+   ------------------------------------------------------------------------- */
+function scaledCanvas(src, sw, sh, maxW) {
+  const k = Math.min(1, maxW/sw);
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(sw*k));
+  c.height = Math.max(1, Math.round(sh*k));
+  c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+  return c;
+}
+function thumbOfImage(imageData, maxW) {
+  const off = document.createElement('canvas');
+  off.width = imageData.width; off.height = imageData.height;
+  off.getContext('2d').putImageData(imageData, 0, 0);
+  return scaledCanvas(off, imageData.width, imageData.height, maxW);
+}
+function thumbOfMask(sil, maxW) {
+  const off = document.createElement('canvas');
+  off.width = sil.w; off.height = sil.h;
+  const ctx = off.getContext('2d');
+  const img = ctx.createImageData(sil.w, sil.h);
+  for (let i=0;i<sil.w*sil.h;i++) {
+    const v = sil.mask[i] ? 255 : 18;
+    img.data[i*4]=v; img.data[i*4+1]=v; img.data[i*4+2]=v; img.data[i*4+3]=255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return scaledCanvas(off, sil.w, sil.h, maxW);
+}
+function thumbOfDepth(d, maxW) {
+  const off = document.createElement('canvas');
+  off.width = d.width; off.height = d.height;
+  const ctx = off.getContext('2d');
+  const img = ctx.createImageData(d.width, d.height);
+  for (let i=0;i<d.width*d.height;i++) {
+    const v = d.data[i];
+    img.data[i*4]=v; img.data[i*4+1]=v; img.data[i*4+2]=v; img.data[i*4+3]=255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return scaledCanvas(off, d.width, d.height, maxW);
+}
+
+/* -------------------------------------------------------------------------
+   Build + download
+   ------------------------------------------------------------------------- */
+buildBtn.onclick = async () => {
+  buildBtn.disabled = true;
+  const label = buildBtn.textContent;
+  buildBtn.textContent = 'Working… 0%';
+  setStatus('Building your model', 'Measuring the cut-outs and shaping the solid.', true);
+  await breathe();
+  try {
+    for (const s of slots) {
+      if (!s.sil) { computeSilhouette(s); await breathe(); }
+    }
+    log(`Cut-out methods — ${slots.map((s)=>`${s.label}:${s.sil.mode}`).join('  ')}`);
+    const weak = slots.filter((s) => !s.bbox);
+    if (weak.length) {
+      log(`WARNING: empty cut-out for ${weak.map((s)=>s.label).join(', ')}`);
+    }
+    lastField = await buildField((p) => {
+      const pct = Math.round(p*100);
+      buildBtn.textContent = `Working… ${pct}%`;
+      setStatus('Building your model', `${pct}% done.`, true);
+    });
+    buildBtn.textContent = 'Shaping the surface…';
+    setStatus('Building your model', 'Shaping the surface.', true);
+    await breathe();
+    extractSurface(lastField);
+  } catch (err) {
+    log(`ERROR: ${err.message}`);
+    setStatus('Something went wrong', 'Open "Technical details" below for the reason.');
+    console.error(err);
+  } finally {
+    buildBtn.textContent = label;
+    buildBtn.disabled = false;
+  }
+};
+
+exportBtn.onclick = () => {
+  if (!surfaceMesh) return;
+  const pos = surfaceMesh.geometry.attributes.position;
+  const nor = surfaceMesh.geometry.attributes.normal;
+  const count = surfaceMesh.count || pos.count;
+  const s = surfaceMesh.scale.x;
+  const lines = ['# 3D model built from six photos'];
+  for (let i=0;i<count;i++)
+    lines.push(`v ${(pos.getX(i)*s).toFixed(5)} ${(pos.getY(i)*s).toFixed(5)} ${(pos.getZ(i)*s).toFixed(5)}`);
+  for (let i=0;i<count;i++)
+    lines.push(`vn ${nor.getX(i).toFixed(4)} ${nor.getY(i).toFixed(4)} ${nor.getZ(i).toFixed(4)}`);
+  for (let i=0;i<count;i+=3) {
+    const a=i+1, b=i+2, c=i+3;
+    lines.push(`f ${a}//${a} ${b}//${b} ${c}//${c}`);
+  }
+  const blob = new Blob([lines.join('\n')], { type:'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'my-model.obj';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  setStatus('Downloaded', 'Saved as <b>my-model.obj</b> — opens in Blender, ' +
+            'Windows 3D Viewer, or most 3D printing software.');
+  log(`Exported ${Math.floor(count/3).toLocaleString()} triangles`);
+};
+
+buildSlotUI();
+log('Ready.');
+</script>
+</body>
+</html>

@@ -1,0 +1,2297 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Reconstruct</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --border:#2a2f3a; --text:#e6e8ee;
+          --muted:#8b93a7; --accent:#7cc4ff; --good:#7ee787; --bad:#ff7b72;
+          --warn:#ffcf80; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font-family: ui-sans-serif, system-ui, sans-serif; overflow:hidden; }
+  .app { display:grid; grid-template-columns:400px 1fr;
+    height:100vh; height:100dvh; }
+  .panel { background:var(--panel); border-right:1px solid var(--border);
+    padding:20px; overflow-y:auto; }
+  h1 { font-size:16px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:12px; margin-bottom:16px; }
+  h2 { font-size:11px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:0.06em; margin:20px 0 8px;
+    border-top:1px solid var(--border); padding-top:14px; }
+  h2:first-of-type { border-top:0; padding-top:0; }
+  .note { background:#101820; border:1px solid var(--border); border-radius:6px;
+    padding:8px 10px; font-size:11px; color:var(--muted); line-height:1.55;
+    margin-bottom:12px; }
+  .note b { color:var(--text); }
+  .field { margin-bottom:12px; }
+  label { display:block; font-size:12px; color:var(--muted); margin-bottom:6px; }
+  input[type=file], select, button {
+    width:100%; background:#0b0d12; color:var(--text);
+    border:1px solid var(--border); border-radius:6px; padding:8px; font-size:13px;
+  }
+  input[type=range] { width:100%; }
+  .val { color:var(--accent); font-size:12px; font-variant-numeric:tabular-nums; }
+  button { cursor:pointer; }
+  button.primary { background:var(--accent); color:#06121e; border:0;
+    font-weight:600; margin-top:8px; padding:11px; }
+  button.ghost { background:#0b0d12; margin-top:6px; }
+  button:disabled { opacity:0.45; cursor:not-allowed; }
+
+  .views { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .view { background:#0b0d12; border:1px dashed var(--border); border-radius:6px;
+    padding:8px; font-size:11px; color:var(--muted); }
+  .view.filled { border-style:solid; border-color:var(--accent); color:var(--text); }
+  .view .name { font-size:10px; text-transform:uppercase; letter-spacing:0.06em;
+    font-weight:600; }
+  .view input[type=file] { padding:4px; font-size:10px; margin-top:5px; }
+  .view .strip { display:flex; gap:3px; margin-top:6px; }
+  .view .strip figure { flex:1; margin:0; }
+  .view .strip canvas { width:100%; display:block; border:1px solid var(--border);
+    border-radius:3px; background:#000; }
+  .view .strip figcaption { font-size:8px; color:var(--muted); text-align:center;
+    margin-top:2px; letter-spacing:0.04em; }
+
+  .stage { display:flex; flex-direction:column; gap:14px; padding:20px;
+    overflow-y:auto; }
+  .stage h3 { font-size:13px; margin:0; }
+  .stage .caption { color:var(--muted); font-size:11px; margin-top:2px; }
+
+  .scoreboard { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; }
+  .score { background:var(--panel); border:1px solid var(--border);
+    border-radius:8px; padding:10px; text-align:center; }
+  .score .lbl { font-size:9px; text-transform:uppercase; letter-spacing:0.06em;
+    color:var(--muted); }
+  .score .num { font-size:20px; font-weight:700; font-variant-numeric:tabular-nums;
+    margin-top:4px; }
+  .score .num.good { color:var(--good); }
+  .score .num.mid  { color:var(--warn); }
+  .score .num.bad  { color:var(--bad); }
+
+  .compare { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; }
+  .cmp { background:var(--panel); border:1px solid var(--border);
+    border-radius:8px; padding:8px; }
+  .cmp .name { font-size:9px; text-transform:uppercase; letter-spacing:0.06em;
+    color:var(--muted); text-align:center; margin-bottom:6px; }
+  .cmp canvas { width:100%; display:block; border-radius:4px; background:#000;
+    border:1px solid var(--border); }
+  .cmp .legend { font-size:8px; color:var(--muted); text-align:center;
+    margin-top:5px; line-height:1.5; }
+  .swatch { display:inline-block; width:7px; height:7px; border-radius:2px;
+    vertical-align:middle; margin-right:2px; }
+
+  .viewerRow { display:grid; grid-template-columns:1fr 320px; gap:14px;
+    align-items:start; }
+  .viewer { position:relative; width:100%; aspect-ratio:4/3; background:#0b0d12;
+    border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+  #canvas { width:100%; height:100%; display:block; }
+  .viewer-toolbar { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+  .viewer-toolbar button { width:auto; padding:5px 10px; font-size:11px; }
+
+  #log { background:#0b0d12; border:1px solid var(--border); border-radius:8px;
+    padding:10px 12px; font-family:ui-monospace,monospace; font-size:11px;
+    color:var(--muted); height:180px; overflow-y:auto; white-space:pre-wrap;
+    line-height:1.6; }
+  .empty { color:var(--muted); font-size:12px; padding:24px; text-align:center;
+    border:1px dashed var(--border); border-radius:8px; }
+
+  /* CSS grid children default to min-height:auto, which lets a tall panel push
+     the row past the viewport instead of scrolling inside it — with
+     overflow:hidden on body, the overflow is simply clipped and unreachable.
+     min-height:0 is what actually allows overflow-y:auto to engage. */
+  .app > * { min-height: 0; }
+  .panel { scrollbar-width: thin; scrollbar-color: #39404f transparent;
+    overscroll-behavior: contain; padding-bottom: 60px; }
+  .panel::-webkit-scrollbar { width: 10px; }
+  .panel::-webkit-scrollbar-track { background: transparent; }
+  .panel::-webkit-scrollbar-thumb { background: #39404f; border-radius: 5px;
+    border: 2px solid transparent; background-clip: content-box; }
+  .panel::-webkit-scrollbar-thumb:hover { background: #4a5364;
+    background-clip: content-box; border: 2px solid transparent; }
+
+  /* Narrow or short windows: stack the panel above the viewer and let the page
+     itself scroll, rather than trapping controls in a squeezed column. */
+  @media (max-width: 760px), (max-height: 480px) {
+    html, body { height: auto; overflow: auto; }
+    .app { grid-template-columns: 1fr; height: auto; min-height: 100vh; }
+    .panel { border-right: 0; border-bottom: 1px solid var(--border);
+      overflow: visible; max-height: none; }
+    .stage { height: 72vh; min-height: 420px; }
+  }
+
+  /* ---- Photo drop tiles ------------------------------------------------
+     The whole tile is the target, not a small native file button: a large
+     obvious area that also accepts a dragged file, states its own name, and
+     shows what it captured once filled. */
+  .views { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .view { position:relative; background:var(--card,#0a0c11);
+    border:1.5px dashed var(--border); border-radius:10px; padding:10px;
+    min-height:104px; transition:border-color .15s, background .15s;
+    cursor:pointer; display:flex; flex-direction:column; }
+  .view:hover { border-color:#4d5666; background:#0d1017; }
+  .view.hot { border-color:var(--accent); background:#0d1723;
+    border-style:solid; }
+  .view.filled { border-style:solid; border-color:#2f4a63; cursor:default; }
+  .view .picker { position:absolute; inset:0; opacity:0; cursor:pointer;
+    width:100%; height:100%; z-index:2; }
+  .view .name { font-size:11.5px; font-weight:700; letter-spacing:.02em; }
+  .view .hint { font-size:10px; color:var(--dim,#5f6779); line-height:1.4;
+    margin-top:2px; }
+  .view .cta { margin-top:auto; padding-top:8px; font-size:11px;
+    color:var(--accent); font-weight:600; }
+  .view.filled .cta { color:var(--muted); font-weight:400; font-size:10px; }
+  .view .strip { display:flex; gap:4px; margin-top:8px; }
+  .view .strip figure { flex:1; margin:0; }
+  .view .strip canvas { width:100%; display:block; border:1px solid var(--border);
+    border-radius:4px; background:#000; }
+  .view .strip figcaption { font-size:8.5px; color:var(--dim,#5f6779);
+    text-align:center; margin-top:3px; }
+</style>
+<link rel="stylesheet" href="./studio.css">
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div class="app">
+
+<aside class="panel">
+  <h1>Reconstruct</h1>
+  <div class="sub">6-view carving · depth-assisted · re-projection scored</div>
+
+  <div class="note">
+    <b>Objective:</b> the reconstruction must re-project back to your original
+    images. Every step is scored by IoU against your input silhouettes — if the
+    score is low, the model is wrong regardless of how it looks.
+  </div>
+
+  <h2>Views</h2>
+  <div class="views" id="views"></div>
+  <button id="clearAll" class="ghost">Clear all views</button>
+
+  <h2>Silhouette</h2>
+  <div class="field">
+    <label>Detection mode</label>
+    <select id="mode">
+      <option value="auto">Auto (pick best per view)</option>
+      <option value="alpha">Alpha (transparent bg)</option>
+      <option value="corner">Corner color match</option>
+      <option value="luma">Luminance threshold</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Threshold <span class="val" id="thrVal">0.50</span></label>
+    <input id="thr" type="range" min="0.02" max="0.98" value="0.5" step="0.01" />
+  </div>
+  <div class="field">
+    <label>Clean up mask</label>
+    <select id="clean">
+      <option value="1">On — fill holes, drop specks</option>
+      <option value="0">Off — raw threshold</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Mask pixel size <span class="val" id="pxVal">1 px</span></label>
+    <input id="px" type="range" min="1" max="24" value="1" step="1" />
+  </div>
+  <div class="note" style="margin-bottom:0;">
+    Larger pixels quantize the mask into blocks before carving, giving a chunky
+    voxel look and a much faster carve. 1&nbsp;px is the full-detail mask.
+  </div>
+
+  <h2>Alignment</h2>
+  <div class="note">
+    Real photos never share exact scale/centering. Auto-align normalizes each
+    silhouette's bounding box so the views actually correspond. <b>Leave this on.</b>
+  </div>
+  <div class="field">
+    <label>Auto-align views</label>
+    <select id="align">
+      <option value="1">On (recommended)</option>
+      <option value="0">Off — trust raw framing</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Object fill <span class="val" id="fillVal">0.90</span></label>
+    <input id="fill" type="range" min="0.5" max="1" value="0.9" step="0.01" />
+  </div>
+  <button id="optimize" class="ghost" disabled>Optimize alignment for best score</button>
+  <div class="note" style="margin:8px 0 0;">
+    Bounding-box alignment is only a guess. This searches per-view scale and
+    offset to maximise real IoU, then keeps the best fit found. It is the single
+    biggest lever on your score.
+  </div>
+  <div class="field" style="margin-top:12px;">
+    <label>Search effort</label>
+    <select id="effort">
+      <option value="fast">Fast — 1 pass</option>
+      <option value="thorough" selected>Thorough — 2 passes</option>
+      <option value="max">Exhaustive — 3 passes</option>
+    </select>
+  </div>
+
+  <h2>Carving</h2>
+  <div class="field">
+    <label>Build mode</label>
+    <select id="buildMode">
+      <option value="exact">Exact from masks — minimal faithful fit</option>
+      <option value="intersect">Visual hull — intersect views</option>
+      <option value="union">Mask extrusion — union of views</option>
+    </select>
+  </div>
+  <div class="note" id="modeNote">
+    <b>Exact</b> starts from the part every view agrees on, then adds the least
+    geometry needed so no mask pixel is left unexplained. Missing goes to zero
+    while extra stays far below a plain union.
+  </div>
+
+  <div id="exactOpts">
+    <div class="field">
+      <label>Core agreement <span class="val" id="coreVal">6 / 6</span></label>
+      <input id="core" type="range" min="3" max="6" value="6" step="1" />
+    </div>
+    <div class="note" style="margin-bottom:0;">
+      The trusted starting volume. Keep at 6/6 — the patching pass fills in
+      whatever that leaves out.
+    </div>
+  </div>
+
+  <div id="intersectOpts" hidden>
+    <div class="field">
+      <label>Views that must agree <span class="val" id="voteVal">5 / 6</span></label>
+      <input id="vote" type="range" min="3" max="6" value="5" step="1" />
+    </div>
+  </div>
+
+  <div id="unionOpts" hidden>
+    <div class="field">
+      <label>Extrusion depth <span class="val" id="extVal">0.35</span></label>
+      <input id="ext" type="range" min="0.05" max="1" value="0.35" step="0.01" />
+    </div>
+    <div class="field">
+      <label>Taper extrusion</label>
+      <select id="taper">
+        <option value="1">On — thins toward mask edges</option>
+        <option value="0">Off — flat slab</option>
+      </select>
+    </div>
+  </div>
+  <div class="field">
+    <label>Voxel resolution <span class="val" id="resVal">96</span></label>
+    <input id="res" type="range" min="24" max="256" value="96" step="8" />
+  </div>
+  <div class="field">
+    <label>Prune redundant volume</label>
+    <select id="prune">
+      <option value="1">On — drop voxels nothing needs</option>
+      <option value="0">Off</option>
+    </select>
+  </div>
+
+  <h2>Depth assist</h2>
+  <div class="note">
+    Monocular depth is <b>relative, not metric</b> — it says what is nearer, never
+    by how much. So it is applied as a weak refinement on top of silhouette
+    carving, never as the primary constraint. At influence&nbsp;0 this is pure
+    silhouette carving, which is the trustworthy baseline.
+  </div>
+  <div class="field">
+    <label>Depth influence <span class="val" id="infVal">0.00</span></label>
+    <input id="inf" type="range" min="0" max="1" value="0" step="0.01" />
+  </div>
+  <div class="field">
+    <label>Depth tolerance <span class="val" id="tolVal">0.60</span></label>
+    <input id="tol" type="range" min="0.05" max="1" value="0.6" step="0.01" />
+  </div>
+  <div class="field">
+    <label>Backend</label>
+    <select id="backend">
+      <option value="webgpu">WebGPU</option>
+      <option value="wasm">WASM (CPU)</option>
+    </select>
+  </div>
+  <button id="runDepth" class="ghost" disabled>Compute depth maps (optional)</button>
+
+  <h2>Render</h2>
+  <div class="field">
+    <label>Finish</label>
+    <select id="finish">
+      <option value="porcelain">Porcelain white</option>
+      <option value="plaster">Matte plaster</option>
+      <option value="colour">Sampled colour</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Block fill <span class="val" id="gapVal">1.00</span></label>
+    <input id="gap" type="range" min="0.55" max="1" value="1" step="0.01" />
+  </div>
+  <div class="field">
+    <label>Ambient occlusion</label>
+    <select id="ao">
+      <option value="1">On — reads as solid form</option>
+      <option value="0">Off — faster</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Contact shadow</label>
+    <select id="shadow">
+      <option value="1">On</option>
+      <option value="0">Off</option>
+    </select>
+  </div>
+
+  <h2>Run</h2>
+  <button id="buildOne" class="primary" disabled>Replicate 1:1 from masks</button>
+  <div class="note" style="margin:8px 0 0;">
+    Blocks one mask pixel wide. Uses octree carving, whose cost scales with the
+    model's surface rather than its volume — brute force at this detail would be
+    roughly 97 million voxels.
+  </div>
+  <div class="field" style="margin-top:12px;">
+    <label>Detail ceiling <span class="val" id="lvlVal">1 : 1</span></label>
+    <input id="lvl" type="range" min="6" max="10" value="9" step="1" />
+  </div>
+  <button id="buildExact" class="ghost" disabled>Build model from masks</button>
+  <div class="note" style="margin:8px 0 0;">
+    One click: switches to exact mode, carves, scores, and renders the 3D result.
+  </div>
+  <button id="build" class="ghost" disabled>Carve &amp; score (current mode)</button>
+  <button id="render3d" class="ghost" disabled>Render 3D</button>
+</aside>
+
+<main class="stage">
+  <div>
+    <h3>Re-projection score</h3>
+    <div class="caption">
+      The carved volume projected back into each original camera, compared against
+      that view's silhouette. IoU 1.00 = perfect reproduction.
+    </div>
+  </div>
+  <div id="scoreboard" class="empty">Load six views and carve to see scores.</div>
+
+  <div>
+    <h3>Original vs reconstruction</h3>
+    <div class="caption">Per-view overlay of input silhouette and re-projected volume.</div>
+  </div>
+  <div id="compare" class="empty">No comparison yet.</div>
+
+  <div>
+    <h3>3D result</h3>
+    <div class="caption">Rendered only when you ask — carving and scoring come first.</div>
+  </div>
+  <div class="viewerRow">
+    <div>
+      <div class="viewer"><canvas id="canvas"></canvas></div>
+      <div class="viewer-toolbar">
+        <button id="reset">Reset view</button>
+        <button id="toggleRotate">Pause rotation</button>
+        <button id="toggleAxes">Hide axes</button>
+      </div>
+    </div>
+    <div id="log"></div>
+  </div>
+</main>
+
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { extractMatte } from './whitematte.js';
+import { makeDropTile, makeBulkDrop } from './dropslot.js';
+
+const $ = (id) => document.getElementById(id);
+const viewsEl=$('views'), modeEl=$('mode'), thrEl=$('thr'), thrVal=$('thrVal'),
+      cleanEl=$('clean'), alignEl=$('align'), fillEl=$('fill'), fillVal=$('fillVal'),
+      voteEl=$('vote'), voteVal=$('voteVal'), resEl=$('res'), resVal=$('resVal'),
+      infEl=$('inf'), infVal=$('infVal'), tolEl=$('tol'), tolVal=$('tolVal'),
+      backendEl=$('backend'), buildBtn=$('build'), runDepthBtn=$('runDepth'),
+      render3dBtn=$('render3d'), clearAllBtn=$('clearAll'),
+      scoreboardEl=$('scoreboard'), compareEl=$('compare'),
+      canvasEl=$('canvas'), logEl=$('log'),
+      pxEl=$('px'), pxVal=$('pxVal'), buildModeEl=$('buildMode'),
+      modeNoteEl=$('modeNote'), intersectOptsEl=$('intersectOpts'),
+      unionOptsEl=$('unionOpts'), extEl=$('ext'), extVal=$('extVal'),
+      taperEl=$('taper'), exactOptsEl=$('exactOpts'), coreEl=$('core'),
+      coreVal=$('coreVal'), buildExactBtn=$('buildExact'),
+      optimizeBtn=$('optimize'), effortEl=$('effort'), pruneEl=$('prune'),
+      buildOneBtn=$('buildOne'), lvlEl=$('lvl'), lvlVal=$('lvlVal'),
+      finishEl=$('finish'), gapEl=$('gap'), gapVal=$('gapVal'),
+      aoEl=$('ao'), shadowEl=$('shadow');
+
+// The optimiser runs hundreds of carves; without this the log would drown.
+let logSuppressed = false;
+const log = (m) => {
+  if (logSuppressed) return;
+  logEl.textContent += `[${new Date().toLocaleTimeString()}] ${m}\n`;
+  logEl.scrollTop = logEl.scrollHeight;
+};
+
+thrEl.oninput = () => { thrVal.textContent = (+thrEl.value).toFixed(2); refreshSilhouettes(); };
+fillEl.oninput = () => fillVal.textContent = (+fillEl.value).toFixed(2);
+voteEl.oninput = () => voteVal.textContent = `${voteEl.value} / 6`;
+resEl.oninput = () => resVal.textContent = resEl.value;
+infEl.oninput = () => infVal.textContent = (+infEl.value).toFixed(2);
+tolEl.oninput = () => tolVal.textContent = (+tolEl.value).toFixed(2);
+modeEl.onchange = refreshSilhouettes;
+cleanEl.onchange = refreshSilhouettes;
+pxEl.oninput = () => {
+  pxVal.textContent = `${pxEl.value} px`;
+  refreshSilhouettes();
+};
+extEl.oninput = () => extVal.textContent = (+extEl.value).toFixed(2);
+
+coreEl.oninput = () => coreVal.textContent = `${coreEl.value} / 6`;
+
+// Report the detail ceiling against the masks' own pixel density, since "1:1"
+// is the thing being aimed at rather than any particular grid number.
+function describeDetail() {
+  const n = 1 << +lvlEl.value;
+  const s = slots.find((v) => v.sil && v.bbox);
+  if (!s) { lvlVal.textContent = `${n}³`; return; }
+  const objectPx = Math.max(s.bbox.w, s.bbox.h);
+  const ratio = objectPx / (n * (+fillEl.value));
+  lvlVal.textContent = ratio <= 1.05
+    ? `1 : 1  (${n}³)`
+    : `1 : ${ratio.toFixed(1)}  (${n}³)`;
+}
+lvlEl.oninput = describeDetail;
+const hasResult = () => lastLeaves || lastVolume;
+gapEl.oninput = () => {
+  gapVal.textContent = (+gapEl.value).toFixed(2);
+  if (hasResult()) render3dBtn.click();
+};
+finishEl.onchange = () => { if (hasResult()) render3dBtn.click(); };
+aoEl.onchange = () => { rebuildComposer(); };
+shadowEl.onchange = () => { applyShadowSettings(); if (hasResult()) render3dBtn.click(); };
+
+const MODE_NOTES = {
+  exact:
+    '<b>Exact</b> starts from the part every view agrees on, then adds the least ' +
+    'geometry needed so no mask pixel is left unexplained. Missing goes to zero ' +
+    'while extra stays far below a plain union.',
+  intersect:
+    '<b>Intersect</b> keeps only what every view agrees on. It is geometrically ' +
+    'correct but collapses on thin or poorly-aligned subjects — that is what ' +
+    '"missing" red means.',
+  union:
+    '<b>Union</b> extrudes each mask along its own view axis and merges the ' +
+    'slabs. Every mask pixel is guaranteed to appear, so "missing" red goes to ' +
+    'zero — at the cost of "extra" blue where the slabs overshoot.',
+};
+buildModeEl.onchange = () => {
+  const m = buildModeEl.value;
+  modeNoteEl.innerHTML = MODE_NOTES[m];
+  exactOptsEl.hidden     = m !== 'exact';
+  intersectOptsEl.hidden = m !== 'intersect';
+  unionOptsEl.hidden     = m !== 'union';
+};
+
+/* =========================================================================
+   GEOMETRY CONVENTION
+   Object occupies the unit cube centred on the origin: x,y,z in [-0.5, 0.5].
+   Y is up and is shared by all four side views.
+
+   A side view at angle t has its camera at (sin t, 0, cos t) looking at the
+   origin, projecting orthographically:
+       right   = x*cos(t) - z*sin(t)     -> image u
+       up      = y                       -> image v (flipped, images are top-down)
+       toward  = x*sin(t) + z*cos(t)     -> depth along the view axis
+   t = 0 is the front camera on +Z, t = pi/2 is the right camera on +X.
+
+   Top camera sits on +Y looking down; bottom sits on -Y looking up.
+   ========================================================================= */
+const SLOTS = [
+  { key:'front',  label:'Front',      kind:'side', angle:0,
+    hint:'Facing the front' },
+  { key:'right',  label:'Right side', kind:'side', angle:Math.PI/2,
+    hint:'Front points left' },
+  { key:'back',   label:'Back',       kind:'side', angle:Math.PI,
+    hint:'Facing the back' },
+  { key:'left',   label:'Left side',  kind:'side', angle:3*Math.PI/2,
+    hint:'Front points right' },
+  { key:'top',    label:'From above', kind:'top',  angle:0,
+    hint:'Front toward photo bottom' },
+  { key:'bottom', label:'From below', kind:'bottom', angle:0,
+    hint:'Front toward photo top' },
+];
+
+// Each slot gains: imageData, sil {mask,w,h}, bbox, xform, depth
+const slots = SLOTS.map((s) => ({ ...s, imageData:null, sil:null, bbox:null,
+                                  xform:null, depth:null }));
+
+function project(slot, x, y, z) {
+  if (slot.kind === 'side') {
+    const c = Math.cos(slot.angle), s = Math.sin(slot.angle);
+    return { u: x*c - z*s, v: y, t: x*s + z*c };
+  }
+  if (slot.kind === 'top')    return { u: x, v: -z, t:  y };
+  /* bottom */                return { u: x, v:  z, t: -y };
+}
+
+/* -------------------------------------------------------------------------
+   View slots UI
+   ------------------------------------------------------------------------- */
+function buildSlotUI() {
+  viewsEl.innerHTML = '';
+  slots.forEach((s, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'view' + (s.imageData ? ' filled' : '');
+    wrap.innerHTML =
+      `<div class="name">${s.label}</div><div class="hint">${s.hint}</div>`;
+
+    makeDropTile(wrap, (f) => acceptFile(i, f));
+
+    const cta = document.createElement('div');
+    cta.className = 'cta';
+    cta.textContent = s.imageData ? 'Click or drop to replace' : '+ Click or drop a photo';
+    wrap.appendChild(cta);
+
+    if (s.imageData) {
+      const strip = document.createElement('div');
+      strip.className = 'strip';
+      strip.appendChild(figure(thumbOfImage(s.imageData, 120), 'photo'));
+      if (s.sil) strip.appendChild(figure(thumbOfMask(s.sil, 120), 'cut-out'));
+      if (s.depth) strip.appendChild(figure(thumbOfDepth(s.depth, 120), 'depth'));
+      wrap.appendChild(strip);
+    }
+    viewsEl.appendChild(wrap);
+  });
+
+  const ready = slots.every((s) => s.imageData);
+  buildBtn.disabled = !ready;
+  buildExactBtn.disabled = !ready;
+  optimizeBtn.disabled = !ready;
+  buildOneBtn.disabled = !ready;
+  runDepthBtn.disabled = !ready;
+  const n = slots.filter((s) => s.imageData).length;
+  buildExactBtn.textContent = ready
+    ? 'Build model from masks'
+    : `Add ${6-n} more photo${6-n === 1 ? '' : 's'}`;
+  if (ready) describeDetail();
+}
+
+async function acceptFile(i, file) {
+  const s = slots[i];
+  const img = await loadImage(URL.createObjectURL(file));
+  s.imageData = imageToImageData(img);
+  s.depth = null;
+  computeSilhouette(s);
+  buildSlotUI();
+  log(`${s.label}: ${img.naturalWidth}x${img.naturalHeight} loaded`);
+}
+
+// Dragging a folder of six onto the grid fills the empty tiles in order.
+makeBulkDrop(viewsEl,
+  () => slots.map((s, i) => ({ el: viewsEl.children[i], filled: !!s.imageData, index: i })),
+  (i, f) => acceptFile(i, f));
+
+function figure(canvas, caption) {
+  const f = document.createElement('figure');
+  f.appendChild(canvas);
+  const c = document.createElement('figcaption');
+  c.textContent = caption;
+  f.appendChild(c);
+  return f;
+}
+
+clearAllBtn.onclick = () => {
+  slots.forEach((s) => { s.imageData=null; s.sil=null; s.bbox=null;
+                         s.xform=null; s.depth=null; });
+  buildSlotUI();
+  scoreboardEl.className = 'empty';
+  scoreboardEl.textContent = 'Load six views and carve to see scores.';
+  compareEl.className = 'empty';
+  compareEl.textContent = 'No comparison yet.';
+  render3dBtn.disabled = true;
+  log('Cleared all views.');
+};
+
+function loadImage(url) {
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => { res(im); URL.revokeObjectURL(url); };
+    im.onerror = rej;
+    im.src = url;
+  });
+}
+function imageToImageData(img) {
+  // Cap the working resolution — silhouettes do not need megapixels.
+  const MAX = 512;
+  const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.max(1, Math.round(img.naturalWidth * scale));
+  const h = Math.max(1, Math.round(img.naturalHeight * scale));
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently:true });
+  ctx.drawImage(img, 0, 0, w, h);
+  return ctx.getImageData(0, 0, w, h);
+}
+
+/* -------------------------------------------------------------------------
+   Silhouette extraction
+   ------------------------------------------------------------------------- */
+function maskAlpha(px, w, h, thr) {
+  const out = new Uint8Array(w*h);
+  for (let i=0, p=0; i<w*h; i++, p+=4) out[i] = (px[p+3]/255) > thr ? 1 : 0;
+  return out;
+}
+function maskLuma(px, w, h, thr) {
+  const out = new Uint8Array(w*h);
+  for (let i=0, p=0; i<w*h; i++, p+=4) {
+    const lum = (0.2126*px[p] + 0.7152*px[p+1] + 0.0722*px[p+2]) / 255;
+    out[i] = (px[p+3] > 8 && lum < thr) ? 1 : 0;
+  }
+  return out;
+}
+function maskCorner(px, w, h, thr) {
+  // Background colour estimated from a border band, which is far more stable
+  // than four single corner pixels on a noisy photo.
+  let r=0, g=0, b=0, n=0;
+  const band = Math.max(1, Math.round(Math.min(w,h) * 0.03));
+  const addPixel = (x, y) => {
+    const p = (y*w+x)*4;
+    r+=px[p]; g+=px[p+1]; b+=px[p+2]; n++;
+  };
+  for (let y=0; y<band; y++) for (let x=0; x<w; x++) addPixel(x, y);
+  for (let y=h-band; y<h; y++) for (let x=0; x<w; x++) addPixel(x, y);
+  for (let y=band; y<h-band; y++) {
+    for (let x=0; x<band; x++) addPixel(x, y);
+    for (let x=w-band; x<w; x++) addPixel(x, y);
+  }
+  r/=n; g/=n; b/=n;
+  const cutoff = (1 - thr) * 0.6;
+  const out = new Uint8Array(w*h);
+  for (let i=0, p=0; i<w*h; i++, p+=4) {
+    if (px[p+3] < 8) { out[i] = 0; continue; }
+    const dr=px[p]-r, dg=px[p+1]-g, db=px[p+2]-b;
+    out[i] = (Math.sqrt(dr*dr+dg*dg+db*db)/441.673) > cutoff ? 1 : 0;
+  }
+  return out;
+}
+
+// Score a candidate mask on the properties a real silhouette has: a sane
+// coverage fraction, a quiet border, and a single dominant blob.
+function maskQuality(mask, w, h) {
+  let on = 0;
+  for (let i=0; i<mask.length; i++) on += mask[i];
+  const frac = on / mask.length;
+  if (frac < 0.01 || frac > 0.95) return -1;
+
+  let border = 0, borderTotal = 0;
+  for (let x=0; x<w; x++) { border += mask[x] + mask[(h-1)*w+x]; borderTotal += 2; }
+  for (let y=0; y<h; y++) { border += mask[y*w] + mask[y*w+w-1]; borderTotal += 2; }
+  const borderFrac = border / borderTotal;
+
+  // Prefer 15-70% coverage, and a border that is mostly background.
+  const coverScore = 1 - Math.min(1, Math.abs(frac - 0.35) / 0.45);
+  const borderScore = 1 - borderFrac;
+  return coverScore * 0.5 + borderScore * 0.5;
+}
+
+// Fill enclosed holes and drop specks by flood-filling background from the
+// border, then keeping only the largest foreground component.
+function cleanMask(mask, w, h) {
+  const outsideBg = new Uint8Array(w*h);
+  const stack = [];
+  const pushIf = (i) => { if (!mask[i] && !outsideBg[i]) { outsideBg[i]=1; stack.push(i); } };
+  for (let x=0; x<w; x++) { pushIf(x); pushIf((h-1)*w+x); }
+  for (let y=0; y<h; y++) { pushIf(y*w); pushIf(y*w+w-1); }
+  while (stack.length) {
+    const i = stack.pop();
+    const x = i % w, y = (i - x) / w;
+    if (x > 0)   pushIf(i-1);
+    if (x < w-1) pushIf(i+1);
+    if (y > 0)   pushIf(i-w);
+    if (y < h-1) pushIf(i+w);
+  }
+  // Anything not reachable from the border is interior -> fill it in.
+  const filled = new Uint8Array(w*h);
+  for (let i=0; i<w*h; i++) filled[i] = outsideBg[i] ? 0 : 1;
+
+  // Keep only the largest connected foreground blob.
+  const labels = new Int32Array(w*h).fill(-1);
+  let best = -1, bestSize = 0, label = 0;
+  for (let seed=0; seed<w*h; seed++) {
+    if (!filled[seed] || labels[seed] !== -1) continue;
+    let size = 0;
+    const st = [seed];
+    labels[seed] = label;
+    while (st.length) {
+      const i = st.pop();
+      size++;
+      const x = i % w, y = (i - x) / w;
+      const nb = [];
+      if (x > 0)   nb.push(i-1);
+      if (x < w-1) nb.push(i+1);
+      if (y > 0)   nb.push(i-w);
+      if (y < h-1) nb.push(i+w);
+      for (const j of nb) if (filled[j] && labels[j] === -1) { labels[j]=label; st.push(j); }
+    }
+    if (size > bestSize) { bestSize = size; best = label; }
+    label++;
+  }
+  const out = new Uint8Array(w*h);
+  if (best >= 0) for (let i=0; i<w*h; i++) out[i] = (labels[i] === best) ? 1 : 0;
+  return out;
+}
+
+// Snap the mask to a coarser pixel grid. A block turns on when at least a third
+// of it is covered, which keeps thin structures (antennas, wires) alive instead
+// of erasing them the way a majority rule would.
+function quantizeMask(mask, w, h, size) {
+  const out = new Uint8Array(w*h);
+  const need = size * size / 3;
+  for (let by=0; by<h; by+=size) {
+    const yEnd = Math.min(h, by+size);
+    for (let bx=0; bx<w; bx+=size) {
+      const xEnd = Math.min(w, bx+size);
+      let count = 0;
+      for (let y=by; y<yEnd; y++)
+        for (let x=bx; x<xEnd; x++) count += mask[y*w+x];
+      if (count < need) continue;
+      for (let y=by; y<yEnd; y++)
+        for (let x=bx; x<xEnd; x++) out[y*w+x] = 1;
+    }
+  }
+  return out;
+}
+
+function computeSilhouette(s) {
+  /* Delegated to the white-background matte: the backdrop is modelled as a
+     gentle gradient rather than one flat colour, neutral cast shadow is
+     rejected without eating dark parts of the subject, white or blown-out
+     areas are recovered by enclosure, and hairline breaks are bridged so thin
+     antennas survive. */
+  const pixelSize = +pxEl.value;
+  const m = extractMatte(s.imageData, {
+    sensitivity: +thrEl.value,
+    shadowRemoval: 0.65,
+    fillHoles: cleanEl.value === '1',
+  });
+  let mask = m.mask;
+  if (pixelSize > 1) mask = quantizeMask(mask, m.w, m.h, pixelSize);
+  s.sil = { mask, w: m.w, h: m.h, mode: 'white-bg' };
+  s.matte = m;
+  s.bbox = bboxOf(mask, m.w, m.h);
+  s.xform = null;
+}
+
+function bboxOf(mask, w, h) {
+  let x0=w, y0=h, x1=-1, y1=-1, count=0;
+  for (let y=0; y<h; y++) {
+    for (let x=0; x<w; x++) {
+      if (!mask[y*w+x]) continue;
+      count++;
+      if (x<x0) x0=x; if (x>x1) x1=x;
+      if (y<y0) y0=y; if (y>y1) y1=y;
+    }
+  }
+  if (x1 < 0) return null;
+  return { x0, y0, x1, y1, count,
+           cx:(x0+x1)/2, cy:(y0+y1)/2,
+           w:(x1-x0+1), h:(y1-y0+1) };
+}
+
+function refreshSilhouettes() {
+  let any = false;
+  for (const s of slots) if (s.imageData) { computeSilhouette(s); any = true; }
+  if (any) buildSlotUI();
+}
+
+/* -------------------------------------------------------------------------
+   Alignment
+
+   Object-space coordinates run -0.5..0.5. To sample a view we must convert an
+   object-space (u,v) into normalized image coordinates. Without alignment we
+   assume the object exactly fills the frame, which is never true. With
+   alignment we map the object box onto the measured silhouette bounding box.
+
+   All four side views share the object's height, so a single uniform scale
+   derived from height makes them mutually consistent. Top and bottom share the
+   object's X extent with the front view, so they are scaled to match that.
+   ------------------------------------------------------------------------- */
+function computeAlignment() {
+  const fill = +fillEl.value;
+  const on = alignEl.value === '1';
+
+  // Identity transform: assume the object exactly fills the frame.
+  const identity = () => ({ sx:1, sy:1, ox:0.5, oy:0.5 });
+
+  if (!on) {
+    for (const s of slots) s.xform = identity();
+    return;
+  }
+
+  // Each silhouette's bounding box, as a fraction of its own image.
+  const frac = (s) => ({
+    w: s.bbox.w / s.sil.w,
+    h: s.bbox.h / s.sil.h,
+    aspect: s.sil.w / s.sil.h,
+  });
+
+  const sides = slots.filter((s) => s.kind === 'side' && s.bbox);
+  if (!sides.length) { for (const s of slots) s.xform = identity(); return; }
+
+  /* All four side views look at the same object height, so height is the one
+     measurement they can be tied together by. Width, though, is genuinely
+     different per view — the front sees the object's X extent, the right sees
+     its Z extent — so width cannot be shared, only accommodated.
+
+     Anchoring on height alone was a real bug: an object wider than it is tall
+     (a drone with splayed arms) overflowed the cube, and every mask pixel out
+     there became permanently unreachable. So the object's height in cube units
+     is chosen such that its widest extent still fits. */
+  let widest = 1;
+  for (const s of sides) {
+    const f = frac(s);
+    if (f.h > 0) widest = Math.max(widest, f.w * f.aspect / f.h);
+  }
+  const heightUnits = fill / widest;   // object height, in cube units
+
+  for (const s of sides) {
+    const f = frac(s);
+    const sy = f.h / heightUnits;
+    s.xform = { sx: sy / f.aspect, sy,
+                ox: s.bbox.cx / s.sil.w, oy: s.bbox.cy / s.sil.h };
+  }
+
+  /* Top and bottom look down the Y axis, so their two image axes are the
+     object's X and Z extents — exactly what the front and right views measured
+     as their widths. That pins them without any further guessing. */
+  const extentOf = (key, fallback) => {
+    const s = slots.find((v) => v.key === key && v.bbox);
+    if (!s) return fallback;
+    const f = frac(s);
+    return f.w / s.xform.sx;
+  };
+  const extentX = extentOf('front', heightUnits);
+  const extentZ = extentOf('right', extentX);
+
+  for (const s of slots) {
+    if (s.kind === 'side') continue;
+    if (!s.bbox) { s.xform = identity(); continue; }
+    const f = frac(s);
+    s.xform = {
+      sx: f.w / Math.max(1e-6, extentX),   // image u spans the object's X
+      sy: f.h / Math.max(1e-6, extentZ),   // image v spans the object's Z
+      ox: s.bbox.cx / s.sil.w,
+      oy: s.bbox.cy / s.sil.h,
+    };
+  }
+}
+
+/* Per-view corrections found by the optimizer, applied on top of the
+   bounding-box alignment. The bbox fit is only ever a guess: it assumes the
+   silhouette's extremes correspond across views, which real photographs do not
+   honour. These three numbers per view are what close that gap. */
+function resetCorrections() {
+  for (const s of slots) s.corr = { scale: 1, dx: 0, dy: 0 };
+}
+
+// Object-space projection -> normalized image coords in [0,1].
+function toImage(slot, p) {
+  const t = slot.xform, c = slot.corr;
+  const k = c ? c.scale : 1;
+  return {
+    u: t.ox + (c ? c.dx : 0) + p.u * t.sx * k,
+    v: t.oy + (c ? c.dy : 0) - p.v * t.sy * k,
+  };
+}
+
+function sampleMask(sil, u, v) {
+  if (u < 0 || u >= 1 || v < 0 || v >= 1) return 0;
+  const x = (u * sil.w) | 0, y = (v * sil.h) | 0;
+  return sil.mask[y*sil.w + x];
+}
+function sampleDepth(d, u, v) {
+  if (u < 0 || u >= 1 || v < 0 || v >= 1) return -1;
+  const x = (u * d.width) | 0, y = (v * d.height) | 0;
+  return d.data[y*d.width + x] / 255;
+}
+function sampleColor(img, u, v) {
+  if (u < 0 || u >= 1 || v < 0 || v >= 1) return null;
+  const x = (u * img.width) | 0, y = (v * img.height) | 0;
+  const p = (y*img.width + x) * 4;
+  return [img.data[p], img.data[p+1], img.data[p+2]];
+}
+
+/* -------------------------------------------------------------------------
+   Carving
+
+   Each view casts a vote. A voxel survives if enough views agree it is inside.
+   Voting rather than unanimous veto is what keeps one bad silhouette from
+   deleting the entire object.
+   ------------------------------------------------------------------------- */
+// Coverage rasters and the scoring pass must agree pixel-for-pixel, otherwise
+// "guaranteed covered" would not survive being measured.
+/* Voxels are rasterised into a comparison grid to be scored against the input
+   masks. Both the grid resolution and the splat footprint have to follow voxel
+   density, not be fixed:
+
+   - Too small a footprint and the projection comes out dotted, so a correct
+     model scores as full of holes.
+   - Too large and it marks far more area than a voxel covers, inventing
+     "extra" — which made the score get *worse* as resolution improved, and
+     also poisoned the optimiser, whose coarse-grid proxy then ranked
+     alignments by a different measure than the one being reported.
+
+   Pinning the grid so one voxel spans just under one pixel makes a single-pixel
+   splat exactly right, and makes scores comparable across resolutions. */
+let COVER_RES = 128;
+let SPLAT = 1;
+
+function setRaster(N) {
+  let maxScale = 0;
+  for (const s of slots) {
+    if (!s.xform) continue;
+    const k = s.corr ? s.corr.scale : 1;
+    maxScale = Math.max(maxScale, s.xform.sx * k, s.xform.sy * k);
+  }
+  if (!maxScale) maxScale = 1;
+  // 0.9 leaves a little overlap so rounding cannot open seams between voxels.
+  COVER_RES = Math.min(224, Math.max(48, Math.floor(0.9 * N / maxScale)));
+  SPLAT = 1;
+}
+
+function carve() {
+  computeAlignment();
+  if (!slots[0].corr) resetCorrections();
+  setRaster(+resEl.value);
+  const m = buildModeEl.value;
+  const volume = m === 'union' ? carveUnion()
+               : m === 'exact' ? carveExact()
+               : carveIntersect();
+  if (pruneEl.value === '1') {
+    const removed = pruneRedundant(volume.N, volume.occ);
+    if (removed) log(`  pruned ${removed.toLocaleString()} redundant voxels`);
+  }
+  return volume;
+}
+
+/* Exact mode.
+
+   Intersection never invents geometry but under-builds; union never misses a
+   pixel but over-builds wildly. Exact takes the intersection as a trusted core,
+   then asks a narrower question for each still-unexplained mask pixel: of all
+   the voxels along that pixel's ray, which one is corroborated by the most
+   other views? Adding only that voxel drives missing to zero while keeping the
+   added volume close to the minimum the masks actually demand. */
+function carveExact() {
+  const N = +resEl.value;
+  const coreNeed = +coreEl.value;
+  const total = N*N*N;
+
+  log(`Exact fit ${N}^3 (${total.toLocaleString()} voxels), core ${coreNeed}/6`);
+  const t0 = performance.now();
+
+  // Pass 1 — how many views vouch for each voxel.
+  const support = new Uint8Array(total);
+  const step = 1 / N;
+  for (let iy=0; iy<N; iy++) {
+    const y = -0.5 + (iy + 0.5) * step;
+    for (let iz=0; iz<N; iz++) {
+      const z = -0.5 + (iz + 0.5) * step;
+      const base = iy*N*N + iz*N;
+      for (let ix=0; ix<N; ix++) {
+        const x = -0.5 + (ix + 0.5) * step;
+        let n = 0;
+        for (const s of slots) {
+          const im = toImage(s, project(s, x, y, z));
+          if (sampleMask(s.sil, im.u, im.v)) n++;
+        }
+        support[base + ix] = n;
+      }
+    }
+  }
+
+  // Pass 2 — the trusted core, plus what each view still sees uncovered.
+  const occ = new Uint8Array(total);
+  let kept = 0;
+  for (let i=0; i<total; i++) {
+    if (support[i] >= coreNeed) { occ[i] = 1; kept++; }
+  }
+  log(`  core: ${kept.toLocaleString()} voxels (${(100*kept/total).toFixed(1)}%)`);
+
+  const covered = slots.map(() => new Uint8Array(COVER_RES*COVER_RES));
+  forEachOccupied(N, occ, (x, y, z) => {
+    slots.forEach((s, vi) => splat(covered[vi], toImage(s, project(s, x, y, z))));
+  });
+
+  const targets = slots.map((s) => resampleMask(s.sil, COVER_RES, COVER_RES));
+
+  // Pass 3 — for every uncovered mask pixel, remember the best-supported voxel
+  // that lands on it.
+  const bestVoxel = slots.map(() => new Int32Array(COVER_RES*COVER_RES).fill(-1));
+  const bestScore = slots.map(() => new Uint8Array(COVER_RES*COVER_RES));
+
+  for (let iy=0; iy<N; iy++) {
+    const y = -0.5 + (iy + 0.5) * step;
+    for (let iz=0; iz<N; iz++) {
+      const z = -0.5 + (iz + 0.5) * step;
+      const base = iy*N*N + iz*N;
+      for (let ix=0; ix<N; ix++) {
+        const vi3 = base + ix;
+        const sup = support[vi3];
+        if (!sup || occ[vi3]) continue;          // unusable, or already in
+        const x = -0.5 + (ix + 0.5) * step;
+
+        for (let vi=0; vi<slots.length; vi++) {
+          const s = slots[vi];
+          const im = toImage(s, project(s, x, y, z));
+          if (!sampleMask(s.sil, im.u, im.v)) continue;
+          if (im.u < 0 || im.u >= 1 || im.v < 0 || im.v >= 1) continue;
+
+          // A voxel is a candidate for every pixel its splat would touch, not
+          // just the one it rounds to — otherwise edge pixels look unreachable
+          // purely because of rounding.
+          const px = (im.u * COVER_RES) | 0, py = (im.v * COVER_RES) | 0;
+          for (let dy=0; dy<SPLAT; dy++) {
+            const qy = py + dy;
+            if (qy >= COVER_RES) break;
+            for (let dx=0; dx<SPLAT; dx++) {
+              const qx = px + dx;
+              if (qx >= COVER_RES) break;
+              const pix = qy*COVER_RES + qx;
+              if (!targets[vi][pix] || covered[vi][pix]) continue;
+              if (sup > bestScore[vi][pix]) {
+                bestScore[vi][pix] = sup;
+                bestVoxel[vi][pix] = vi3;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Pass 4 — commit the patches.
+  let added = 0, unreachable = 0;
+  for (let vi=0; vi<slots.length; vi++) {
+    for (let pix=0; pix<COVER_RES*COVER_RES; pix++) {
+      if (!targets[vi][pix] || covered[vi][pix]) continue;
+      const v = bestVoxel[vi][pix];
+      if (v < 0) { unreachable++; continue; }
+      if (!occ[v]) { occ[v] = 1; added++; kept++; }
+    }
+  }
+
+  const dt = ((performance.now() - t0) / 1000).toFixed(2);
+  log(`  patched: +${added.toLocaleString()} voxels for uncovered mask pixels`);
+  log(`Exact fit in ${dt}s — ${kept.toLocaleString()} voxels ` +
+      `(${(100*kept/total).toFixed(1)}% of grid)`);
+  if (unreachable) {
+    log(`  NOTE: ${unreachable} mask pixels have no voxel on their ray at this ` +
+        `resolution. Raise voxel resolution, or check that this view's framing ` +
+        `matches the others.`);
+  }
+  return { N, occ };
+}
+
+function forEachOccupied(N, occ, fn) {
+  const step = 1 / N;
+  for (let iy=0; iy<N; iy++) {
+    const y = -0.5 + (iy + 0.5) * step;
+    for (let iz=0; iz<N; iz++) {
+      const z = -0.5 + (iz + 0.5) * step;
+      const base = iy*N*N + iz*N;
+      for (let ix=0; ix<N; ix++) {
+        if (!occ[base + ix]) continue;
+        fn(-0.5 + (ix + 0.5) * step, y, z);
+      }
+    }
+  }
+}
+
+function pixelIndex(im) {
+  if (im.u < 0 || im.u >= 1 || im.v < 0 || im.v >= 1) return -1;
+  return ((im.v * COVER_RES) | 0) * COVER_RES + ((im.u * COVER_RES) | 0);
+}
+
+function splat(grid, im) {
+  if (im.u < 0 || im.u >= 1 || im.v < 0 || im.v >= 1) return;
+  const px = (im.u * COVER_RES) | 0, py = (im.v * COVER_RES) | 0;
+  for (let dy=0; dy<SPLAT; dy++) {
+    const qy = py + dy;
+    if (qy >= COVER_RES) break;
+    for (let dx=0; dx<SPLAT; dx++) {
+      const qx = px + dx;
+      if (qx < COVER_RES) grid[qy*COVER_RES + qx] = 1;
+    }
+  }
+}
+
+/* Union mode: extrude every mask along its own view axis and merge the slabs.
+   Because each mask's own rays are always filled, no input pixel can go
+   unrepresented — this is the "replicate every pixel" build. */
+function carveUnion() {
+  const N = +resEl.value;
+  const half = +extEl.value / 2;
+  const taper = taperEl.value === '1';
+  const useDepth = +infEl.value > 0 && slots.every((s) => s.depth);
+
+  log(`Union extrusion ${N}^3 (${(N*N*N).toLocaleString()} voxels), ` +
+      `depth ${(half*2).toFixed(2)}${taper ? ', tapered' : ''}` +
+      (useDepth ? ', depth-shaped' : ''));
+
+  const occ = new Uint8Array(N*N*N);
+  const step = 1 / N;
+  let kept = 0;
+  const t0 = performance.now();
+
+  for (let iy=0; iy<N; iy++) {
+    const y = -0.5 + (iy + 0.5) * step;
+    for (let iz=0; iz<N; iz++) {
+      const z = -0.5 + (iz + 0.5) * step;
+      for (let ix=0; ix<N; ix++) {
+        const x = -0.5 + (ix + 0.5) * step;
+
+        let inside = false;
+        for (const s of slots) {
+          const p = project(s, x, y, z);
+          const im = toImage(s, p);
+          if (!sampleMask(s.sil, im.u, im.v)) continue;
+
+          // Centre of the slab follows the depth map when it is available, so
+          // the extrusion bulges toward the camera where the surface is nearer.
+          let centre = 0;
+          if (useDepth) {
+            const d = sampleDepth(s.depth, im.u, im.v);
+            if (d >= 0) centre = (d - 0.5) * +infEl.value;
+          }
+
+          let reach = half;
+          if (taper) {
+            // Thin the slab near the mask border so edges round off instead of
+            // ending in a hard wall.
+            reach *= edgeFalloff(s.sil, im.u, im.v);
+          }
+          if (Math.abs(p.t - centre) <= reach) { inside = true; break; }
+        }
+
+        if (inside) { occ[iy*N*N + iz*N + ix] = 1; kept++; }
+      }
+    }
+  }
+
+  const dt = ((performance.now() - t0) / 1000).toFixed(2);
+  log(`Extruded in ${dt}s — ${kept.toLocaleString()} voxels kept ` +
+      `(${(100*kept/(N*N*N)).toFixed(1)}% of grid)`);
+  return { N, occ };
+}
+
+// Cheap distance-to-edge estimate: sample a small ring around the point and
+// report what fraction of it is still inside the mask.
+function edgeFalloff(sil, u, v) {
+  const r = 0.02;
+  let hits = 0;
+  for (let k=0; k<8; k++) {
+    const a = (k / 8) * Math.PI * 2;
+    if (sampleMask(sil, u + Math.cos(a)*r, v + Math.sin(a)*r)) hits++;
+  }
+  // 8/8 interior -> full thickness; 4/8 on an edge -> about half.
+  return 0.35 + 0.65 * (hits / 8);
+}
+
+function carveIntersect() {
+  const N = +resEl.value;
+  const need = +voteEl.value;
+  const influence = +infEl.value;
+  const tol = +tolEl.value;
+  const useDepth = influence > 0 && slots.every((s) => s.depth);
+
+  log(`Carving ${N}^3 (${(N*N*N).toLocaleString()} voxels), agreement ${need}/6` +
+      (useDepth ? `, depth influence ${influence.toFixed(2)}` : ', silhouette only'));
+
+  const occ = new Uint8Array(N*N*N);
+  const step = 1 / N;
+  let kept = 0;
+  const t0 = performance.now();
+
+  for (let iy=0; iy<N; iy++) {
+    const y = -0.5 + (iy + 0.5) * step;
+    for (let iz=0; iz<N; iz++) {
+      const z = -0.5 + (iz + 0.5) * step;
+      for (let ix=0; ix<N; ix++) {
+        const x = -0.5 + (ix + 0.5) * step;
+
+        let votes = 0;
+        for (const s of slots) {
+          const p = project(s, x, y, z);
+          const im = toImage(s, p);
+          if (!sampleMask(s.sil, im.u, im.v)) continue;
+
+          if (useDepth) {
+            // Depth is relative, so it only ever withholds a vote when a voxel
+            // sits clearly in front of the predicted surface. Influence scales
+            // how far past the tolerance that overshoot must reach, so depth
+            // can nudge the result but never overrule silhouette evidence.
+            const d = sampleDepth(s.depth, im.u, im.v);
+            if (d >= 0) {
+              const surfaceT = d - 0.5;              // predicted surface along view axis
+              const allowed = tol + (1 - influence); // influence 0 => never triggers
+              if (p.t > surfaceT + allowed) continue;
+            }
+          }
+          votes++;
+        }
+
+        if (votes >= need) { occ[iy*N*N + iz*N + ix] = 1; kept++; }
+      }
+    }
+  }
+
+  const dt = ((performance.now() - t0) / 1000).toFixed(2);
+  const pct = (100 * kept / (N*N*N)).toFixed(1);
+  log(`Carved in ${dt}s — ${kept.toLocaleString()} voxels kept (${pct}% of grid)`);
+  if (kept === 0) {
+    log('EMPTY RESULT. The silhouettes do not intersect. Lower the agreement ' +
+        'requirement, or switch to union mode.');
+  }
+  return { N, occ };
+}
+
+/* -------------------------------------------------------------------------
+   Re-projection scoring — the actual objective.
+
+   Project the carved volume back into every original camera and compare the
+   resulting silhouette against the input. This is the only honest measure of
+   whether the reconstruction reproduces the images it came from.
+   ------------------------------------------------------------------------- */
+function reproject(N, occ, slot, W, H) {
+  const out = new Uint8Array(W*H);
+  const step = 1 / N;
+  for (let iy=0; iy<N; iy++) {
+    const y = -0.5 + (iy + 0.5) * step;
+    for (let iz=0; iz<N; iz++) {
+      const z = -0.5 + (iz + 0.5) * step;
+      const rowBase = iy*N*N + iz*N;
+      for (let ix=0; ix<N; ix++) {
+        if (!occ[rowBase + ix]) continue;
+        const x = -0.5 + (ix + 0.5) * step;
+        const im = toImage(slot, project(slot, x, y, z));
+        if (im.u < 0 || im.u >= 1 || im.v < 0 || im.v >= 1) continue;
+        // Splat a small footprint so the sparse voxel grid does not alias into
+        // a dotted mask at display resolution. Must match the exact-mode
+        // coverage raster, or its guarantee would not survive measurement.
+        const px = (im.u * W) | 0, py = (im.v * H) | 0;
+        for (let dy=0; dy<SPLAT; dy++) {
+          for (let dx=0; dx<SPLAT; dx++) {
+            const qx = px+dx, qy = py+dy;
+            if (qx < W && qy < H) out[qy*W + qx] = 1;
+          }
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function resampleMask(sil, W, H) {
+  const out = new Uint8Array(W*H);
+  for (let y=0; y<H; y++) {
+    const sy = Math.min(sil.h-1, ((y + 0.5) / H * sil.h) | 0);
+    for (let x=0; x<W; x++) {
+      const sx = Math.min(sil.w-1, ((x + 0.5) / W * sil.w) | 0);
+      out[y*W + x] = sil.mask[sy*sil.w + sx];
+    }
+  }
+  return out;
+}
+
+/* -------------------------------------------------------------------------
+   Octree carving — the 1:1 path
+
+   A dense grid fine enough for one-pixel blocks is around 97 million cells,
+   which is neither fast nough to carve nor small enough to hold. But almost all
+   of those cells are boring: deep inside the object, or far outside it. Only
+   cells straddling the surface need fine detail.
+
+   So instead of visiting every cell, start with one big cell and recurse only
+   where the answer is genuinely in doubt. A cell is classified per view by
+   projecting it and asking how much of the mask its footprint covers:
+
+       nothing covered      -> the cell is outside; discard it and its children
+       completely covered   -> the cell is inside as far as this view knows
+       partially covered    -> the surface passes through; subdivide
+
+   Counting mask pixels inside a rectangle would be the expensive part, so each
+   mask gets a summed-area table once up front, making every such query a
+   constant-time read of four values regardless of rectangle size.
+   ------------------------------------------------------------------------- */
+function buildIntegral(sil) {
+  const { mask, w, h } = sil;
+  // One extra row and column of zeros removes all bounds-checking from queries.
+  const I = new Uint32Array((w + 1) * (h + 1));
+  for (let y = 0; y < h; y++) {
+    let rowSum = 0;
+    const src = y * w, dst = (y + 1) * (w + 1);
+    const prev = y * (w + 1);
+    for (let x = 0; x < w; x++) {
+      rowSum += mask[src + x];
+      I[dst + x + 1] = I[prev + x + 1] + rowSum;
+    }
+  }
+  return I;
+}
+
+function rectCount(I, w, h, x0, y0, x1, y1) {
+  x0 = Math.max(0, Math.min(w, x0)); x1 = Math.max(0, Math.min(w, x1));
+  y0 = Math.max(0, Math.min(h, y0)); y1 = Math.max(0, Math.min(h, y1));
+  if (x1 <= x0 || y1 <= y0) return { count: 0, area: 0 };
+  const stride = w + 1;
+  const count = I[y1*stride + x1] - I[y0*stride + x1]
+              - I[y1*stride + x0] + I[y0*stride + x0];
+  return { count, area: (x1 - x0) * (y1 - y0) };
+}
+
+const OUT = 0, PARTIAL = 1, IN = 2;
+
+/* A cell's footprint is only axis-aligned for the top and bottom cameras; from
+   a side view it is a rotated square. Using the bounding rectangle of the
+   projected corners keeps the test conservative in both directions: a bounding
+   box entirely inside the mask means the cell certainly is, and one entirely
+   outside means it certainly is not. Anything else is reported as straddling,
+   which costs a subdivision but never a wrong answer. */
+function classifyCell(slot, cx, cy, cz, half) {
+  let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+  for (let c = 0; c < 8; c++) {
+    const x = cx + ((c & 1) ? half : -half);
+    const y = cy + ((c & 2) ? half : -half);
+    const z = cz + ((c & 4) ? half : -half);
+    const im = toImage(slot, project(slot, x, y, z));
+    if (im.u < u0) u0 = im.u; if (im.u > u1) u1 = im.u;
+    if (im.v < v0) v0 = im.v; if (im.v > v1) v1 = im.v;
+  }
+  const { w, h } = slot.sil;
+  const { count, area } = rectCount(
+    slot.integral, w, h,
+    Math.floor(u0 * w), Math.floor(v0 * h),
+    Math.ceil(u1 * w),  Math.ceil(v1 * h)
+  );
+  if (area === 0) return OUT;          // projects off the image entirely
+  if (count === 0) return OUT;
+  if (count === area) return IN;
+  return PARTIAL;
+}
+
+async function carveOctree(maxLevel, onProgress) {
+  computeAlignment();
+  if (!slots[0].corr) resetCorrections();
+  for (const s of slots) s.integral = buildIntegral(s.sil);
+
+  // Solid leaves, flattened: cx, cy, cz, size per entry.
+  const leaves = [];
+  /* Blocks that are provably invisible are kept out of the render entirely.
+     The test: grow a cell by one finest voxel and re-classify it. If the grown
+     box still falls fully inside every mask, then every neighbouring cell lies
+     within that box and would itself classify as inside — so the cell is
+     enclosed by solid on all sides and can never be seen. */
+  const shell = [];
+  const margin = 1 / (1 << maxLevel);
+  // Explicit stack rather than recursion — at this depth the call stack would
+  // not survive, and an explicit one can be paused to keep the page responsive.
+  const stack = [[0, 0, 0, 0]];   // cx, cy, cz, level
+  let visited = 0, interior = 0, boundary = 0, hidden = 0;
+  const t0 = performance.now();
+
+  while (stack.length) {
+    const [cx, cy, cz, level] = stack.pop();
+    visited++;
+
+    const size = 1 / (1 << level);
+    const half = size / 2;
+
+    let allIn = true, anyOut = false;
+    for (const s of slots) {
+      const c = classifyCell(s, cx, cy, cz, half);
+      if (c === OUT) { anyOut = true; break; }
+      if (c === PARTIAL) allIn = false;
+    }
+    if (anyOut) continue;
+
+    if (allIn) {
+      // Every view says solid: keep the whole cell, however large, and stop.
+      leaves.push(cx, cy, cz, size);
+      let enclosed = true;
+      for (const s of slots) {
+        if (classifyCell(s, cx, cy, cz, half + margin) !== IN) { enclosed = false; break; }
+      }
+      if (enclosed) hidden++;
+      else shell.push(cx, cy, cz, size);
+      interior++;
+      continue;
+    }
+    if (level >= maxLevel) {
+      leaves.push(cx, cy, cz, size);
+      shell.push(cx, cy, cz, size);
+      boundary++;
+      continue;
+    }
+    const q = size / 4;
+    for (let i = 0; i < 8; i++) {
+      stack.push([
+        cx + ((i & 1) ? q : -q),
+        cy + ((i & 2) ? q : -q),
+        cz + ((i & 4) ? q : -q),
+        level + 1,
+      ]);
+    }
+
+    if (onProgress && (visited & 0x3FFF) === 0) {
+      onProgress(visited, leaves.length / 4);
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  }
+
+  const dt = ((performance.now() - t0) / 1000).toFixed(2);
+  const dense = Math.pow(1 << maxLevel, 3);
+  log(`Octree carve in ${dt}s — ${visited.toLocaleString()} cells examined ` +
+      `of ${dense.toLocaleString()} in a dense grid ` +
+      `(${(100*visited/dense).toFixed(3)}%)`);
+  log(`  ${(leaves.length/4).toLocaleString()} solid leaves ` +
+      `(${interior.toLocaleString()} whole-cell interior, ${boundary.toLocaleString()} surface)`);
+  log(`  ${hidden.toLocaleString()} fully enclosed blocks culled — ` +
+      `${(shell.length/4).toLocaleString()} to draw`);
+  return { leaves, shell, maxLevel };
+}
+
+/* Scoring the octree result: rasterise each leaf's projected footprint. Leaves
+   vary in size, so a footprint is a rectangle rather than a single pixel. */
+function scoreLeaves({ leaves, maxLevel }) {
+  /* Score at the model's own finest granularity. Scoring coarser would force
+     each finest leaf to claim a whole pixel it only partly covers, padding the
+     silhouette with a halo of "extra" that exists only in the measurement. */
+  const res = Math.min(512, 1 << maxLevel);
+  const results = [];
+  for (const s of slots) {
+    const target = resampleMask(s.sil, res, res);
+    const got = new Uint8Array(res * res);
+    for (let i = 0; i < leaves.length; i += 4) {
+      const cx = leaves[i], cy = leaves[i+1], cz = leaves[i+2];
+      const half = leaves[i+3] / 2;
+      let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+      for (let c = 0; c < 8; c++) {
+        const im = toImage(s, project(s,
+          cx + ((c & 1) ? half : -half),
+          cy + ((c & 2) ? half : -half),
+          cz + ((c & 4) ? half : -half)));
+        if (im.u < u0) u0 = im.u; if (im.u > u1) u1 = im.u;
+        if (im.v < v0) v0 = im.v; if (im.v > v1) v1 = im.v;
+      }
+      const px0 = Math.max(0, Math.floor(u0 * res));
+      const px1 = Math.min(res, Math.max(px0 + 1, Math.ceil(u1 * res)));
+      const py0 = Math.max(0, Math.floor(v0 * res));
+      const py1 = Math.min(res, Math.max(py0 + 1, Math.ceil(v1 * res)));
+      for (let y = py0; y < py1; y++) {
+        const row = y * res;
+        for (let x = px0; x < px1; x++) got[row + x] = 1;
+      }
+    }
+    let inter = 0, union = 0, missed = 0, extra = 0;
+    for (let i = 0; i < res*res; i++) {
+      const a = target[i], b = got[i];
+      if (a && b) inter++;
+      if (a || b) union++;
+      if (a && !b) missed++;
+      if (!a && b) extra++;
+    }
+    results.push({ slot:s, target, got, iou: union ? inter/union : 0,
+                   missed, extra, W:res, H:res });
+  }
+  return results;
+}
+
+/* -------------------------------------------------------------------------
+   Alignment optimisation
+
+   Rather than trusting the bounding-box fit, search per-view scale and offset
+   for the values that actually maximise re-projection IoU. The search runs on a
+   coarse voxel grid — a cheap evaluation whose ranking of candidate alignments
+   matches the full-resolution one closely enough to optimise against — and the
+   winning parameters are then used at full resolution.
+   ------------------------------------------------------------------------- */
+const OPT_RES = 56;
+
+function meanIoUAt(res) {
+  const saveRes = resEl.value;
+  resEl.value = String(res);
+  let mean = 0;
+  try {
+    setRaster(res);
+    const { N, occ } = buildModeEl.value === 'union' ? carveUnion()
+                     : buildModeEl.value === 'exact' ? carveExactCore()
+                     : carveIntersect();
+    const r = scoreAll(N, occ, { quiet: true });
+    mean = r.reduce((a, x) => a + x.iou, 0) / r.length;
+  } finally {
+    resEl.value = saveRes;
+  }
+  return mean;
+}
+
+async function optimizeAlignment() {
+  const passes = { fast:1, thorough:2, max:3 }[effortEl.value] || 2;
+  computeAlignment();
+  resetCorrections();
+
+  const quietLog = logSuppressed;
+  logSuppressed = true;
+  let best;
+  try {
+    best = meanIoUAt(OPT_RES);
+  } finally {
+    logSuppressed = quietLog;
+  }
+  log(`Optimising alignment — starting IoU ${best.toFixed(4)} (coarse grid)`);
+
+  // Widest sweeps first, then refine. Scale errors dominate, so they lead.
+  const schedule = [
+    { key:'scale', deltas:[0.10, 0.05, 0.025, 0.012] },
+    { key:'dx',    deltas:[0.04, 0.02, 0.01, 0.005] },
+    { key:'dy',    deltas:[0.04, 0.02, 0.01, 0.005] },
+  ];
+
+  let evals = 0;
+  for (let pass=0; pass<passes; pass++) {
+    for (const { key, deltas } of schedule) {
+      for (const s of slots) {
+        for (const d of deltas.slice(pass, pass + 3)) {
+          for (const dir of [+1, -1]) {
+            const original = s.corr[key];
+            s.corr[key] = original + dir * d;
+            let score;
+            logSuppressed = true;
+            try { score = meanIoUAt(OPT_RES); }
+            finally { logSuppressed = quietLog; }
+            evals++;
+            if (score > best + 1e-5) best = score;   // keep the improvement
+            else s.corr[key] = original;             // revert
+          }
+        }
+      }
+    }
+    log(`  pass ${pass+1}/${passes}: IoU ${best.toFixed(4)} after ${evals} evaluations`);
+    // Yield so the UI can paint between passes.
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  log(`  coarse IoU ${best.toFixed(4)} after ${evals} evaluations`);
+
+  /* The coarse grid is only a proxy, and a proxy can be overfit: corrections
+     that help at 56^3 sometimes hurt at the resolution actually being used. So
+     the result is confirmed at the target resolution against doing nothing, and
+     discarded unless it genuinely wins. This makes optimising monotone — it can
+     improve the score or leave it alone, never degrade it. */
+  const found = slots.map((s) => ({ ...s.corr }));
+  const target = +resEl.value;
+
+  logSuppressed = true;
+  let withFound, withNone;
+  try {
+    withFound = meanIoUAt(target);
+    resetCorrections();
+    withNone = meanIoUAt(target);
+  } finally {
+    logSuppressed = quietLog;
+  }
+
+  if (withFound > withNone) {
+    slots.forEach((s, i) => { s.corr = found[i]; });
+    log(`Alignment optimised — IoU ${withNone.toFixed(4)} -> ${withFound.toFixed(4)} ` +
+        `at resolution ${target}`);
+    log(`  scale corrections: ${slots.map((s) =>
+        `${s.label} x${s.corr.scale.toFixed(3)}`).join('  ')}`);
+    return withFound;
+  }
+
+  log(`Alignment left unchanged — the search found ${withFound.toFixed(4)} but ` +
+      `the bounding-box fit already scores ${withNone.toFixed(4)} at resolution ` +
+      `${target}. Corrections discarded.`);
+  return withNone;
+}
+
+/* Exact mode without the patch pass, used by the optimiser. Patching always
+   drives missing toward zero, which would flatten the differences between
+   candidate alignments and leave the search nothing to climb. */
+function carveExactCore() {
+  const saveMode = buildModeEl.value;
+  const N = +resEl.value;
+  const need = +coreEl.value;
+  const total = N*N*N;
+  const occ = new Uint8Array(total);
+  const step = 1 / N;
+  for (let iy=0; iy<N; iy++) {
+    const y = -0.5 + (iy + 0.5) * step;
+    for (let iz=0; iz<N; iz++) {
+      const z = -0.5 + (iz + 0.5) * step;
+      const base = iy*N*N + iz*N;
+      for (let ix=0; ix<N; ix++) {
+        const x = -0.5 + (ix + 0.5) * step;
+        let n = 0;
+        for (const s of slots) {
+          const im = toImage(s, project(s, x, y, z));
+          if (sampleMask(s.sil, im.u, im.v)) n++;
+        }
+        if (n >= need) occ[base + ix] = 1;
+      }
+    }
+  }
+  return { N, occ };
+}
+
+/* -------------------------------------------------------------------------
+   Pruning
+
+   The patch pass adds voxels one uncovered pixel at a time, so it inevitably
+   adds some that a later voxel made redundant. A voxel is safe to drop when
+   every pixel it contributes to is already covered at least twice, in every
+   view. Removing those lowers "extra" without ever creating "missing".
+   ------------------------------------------------------------------------- */
+function pruneRedundant(N, occ) {
+  const counts = slots.map(() => new Uint16Array(COVER_RES*COVER_RES));
+  const targets = slots.map((s) => resampleMask(s.sil, COVER_RES, COVER_RES));
+  const step = 1 / N;
+
+  const eachSplat = (x, y, z, fn) => {
+    for (let vi=0; vi<slots.length; vi++) {
+      const s = slots[vi];
+      const im = toImage(s, project(s, x, y, z));
+      if (im.u < 0 || im.u >= 1 || im.v < 0 || im.v >= 1) continue;
+      const px = (im.u * COVER_RES) | 0, py = (im.v * COVER_RES) | 0;
+      for (let dy=0; dy<SPLAT; dy++) {
+        const qy = py + dy;
+        if (qy >= COVER_RES) break;
+        for (let dx=0; dx<SPLAT; dx++) {
+          const qx = px + dx;
+          if (qx >= COVER_RES) break;
+          fn(vi, qy*COVER_RES + qx);
+        }
+      }
+    }
+  };
+
+  forEachOccupied(N, occ, (x, y, z) => {
+    eachSplat(x, y, z, (vi, pix) => { counts[vi][pix]++; });
+  });
+
+  let removed = 0;
+
+  for (let iy=0; iy<N; iy++) {
+    const y = -0.5 + (iy + 0.5) * step;
+    for (let iz=0; iz<N; iz++) {
+      const z = -0.5 + (iz + 0.5) * step;
+      const base = iy*N*N + iz*N;
+      for (let ix=0; ix<N; ix++) {
+        if (!occ[base + ix]) continue;
+        const x = -0.5 + (ix + 0.5) * step;
+
+        // Only consider voxels that actually land outside a mask somewhere —
+        // those are the ones producing "extra". Voxels living entirely inside
+        // every silhouette cost nothing and are left alone, which keeps the
+        // solid watertight instead of hollowing it into a shell full of holes.
+        let harmful = false, redundant = true;
+        eachSplat(x, y, z, (vi, pix) => {
+          if (!targets[vi][pix]) harmful = true;
+          if (counts[vi][pix] < 2) redundant = false;
+        });
+        if (!harmful || !redundant) continue;
+
+        occ[base + ix] = 0;
+        removed++;
+        eachSplat(x, y, z, (vi, pix) => { counts[vi][pix]--; });
+      }
+    }
+  }
+  return removed;
+}
+
+function scoreAll(N, occ, { quiet = false } = {}) {
+  const W = COVER_RES, H = COVER_RES;
+  const results = [];
+  for (const s of slots) {
+    const target = resampleMask(s.sil, W, H);
+    const got = reproject(N, occ, s, W, H);
+    let inter = 0, union = 0, missed = 0, extra = 0;
+    for (let i=0; i<W*H; i++) {
+      const a = target[i], b = got[i];
+      if (a && b) inter++;
+      if (a || b) union++;
+      if (a && !b) missed++;
+      if (!a && b) extra++;
+    }
+    const iou = union ? inter / union : 0;
+    results.push({ slot:s, target, got, iou, missed, extra, W, H });
+  }
+  return results;
+}
+
+function renderScoreboard(results) {
+  scoreboardEl.className = 'scoreboard';
+  scoreboardEl.innerHTML = '';
+  for (const r of results) {
+    const cls = r.iou >= 0.8 ? 'good' : r.iou >= 0.55 ? 'mid' : 'bad';
+    const d = document.createElement('div');
+    d.className = 'score';
+    d.innerHTML = `<div class="lbl">${r.slot.label}</div>` +
+                  `<div class="num ${cls}">${r.iou.toFixed(2)}</div>`;
+    scoreboardEl.appendChild(d);
+  }
+  const mean = results.reduce((a,r)=>a+r.iou, 0) / results.length;
+  log(`Mean re-projection IoU: ${mean.toFixed(3)}` +
+      (mean >= 0.8 ? '  (faithful)' :
+       mean >= 0.55 ? '  (usable — tune threshold or alignment)' :
+                      '  (poor — silhouettes likely disagree)'));
+}
+
+function renderComparison(results) {
+  compareEl.className = 'compare';
+  compareEl.innerHTML = '';
+  for (const r of results) {
+    const box = document.createElement('div');
+    box.className = 'cmp';
+    box.innerHTML = `<div class="name">${r.slot.label}</div>`;
+
+    const c = document.createElement('canvas');
+    c.width = r.W; c.height = r.H;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(r.W, r.H);
+    for (let i=0; i<r.W*r.H; i++) {
+      const a = r.target[i], b = r.got[i];
+      let col;
+      if (a && b)       col = [126, 231, 135];  // agreement
+      else if (a && !b) col = [255, 123, 114];  // missing from reconstruction
+      else if (!a && b) col = [124, 196, 255];  // invented by reconstruction
+      else              col = [11, 13, 18];
+      img.data[i*4]=col[0]; img.data[i*4+1]=col[1];
+      img.data[i*4+2]=col[2]; img.data[i*4+3]=255;
+    }
+    ctx.putImageData(img, 0, 0);
+    box.appendChild(c);
+
+    const legend = document.createElement('div');
+    legend.className = 'legend';
+    legend.innerHTML =
+      `<span class="swatch" style="background:#7ee787"></span>match ` +
+      `<span class="swatch" style="background:#ff7b72"></span>missing ` +
+      `<span class="swatch" style="background:#7cc4ff"></span>extra`;
+    box.appendChild(legend);
+    compareEl.appendChild(box);
+  }
+}
+
+/* -------------------------------------------------------------------------
+   Thumbnails
+   ------------------------------------------------------------------------- */
+function thumbOfImage(imageData, maxW) {
+  const scale = Math.min(1, maxW / imageData.width);
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(imageData.width * scale));
+  c.height = Math.max(1, Math.round(imageData.height * scale));
+  const off = document.createElement('canvas');
+  off.width = imageData.width; off.height = imageData.height;
+  off.getContext('2d').putImageData(imageData, 0, 0);
+  c.getContext('2d').drawImage(off, 0, 0, c.width, c.height);
+  return c;
+}
+function thumbOfMask(sil, maxW) {
+  const off = document.createElement('canvas');
+  off.width = sil.w; off.height = sil.h;
+  const ctx = off.getContext('2d');
+  const img = ctx.createImageData(sil.w, sil.h);
+  for (let i=0; i<sil.w*sil.h; i++) {
+    const v = sil.mask[i] ? 255 : 18;
+    img.data[i*4]=v; img.data[i*4+1]=v; img.data[i*4+2]=v; img.data[i*4+3]=255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const scale = Math.min(1, maxW / sil.w);
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(sil.w * scale));
+  c.height = Math.max(1, Math.round(sil.h * scale));
+  c.getContext('2d').drawImage(off, 0, 0, c.width, c.height);
+  return c;
+}
+function thumbOfDepth(d, maxW) {
+  const off = document.createElement('canvas');
+  off.width = d.width; off.height = d.height;
+  const ctx = off.getContext('2d');
+  const img = ctx.createImageData(d.width, d.height);
+  for (let i=0; i<d.width*d.height; i++) {
+    const v = d.data[i];
+    img.data[i*4]=v; img.data[i*4+1]=v; img.data[i*4+2]=v; img.data[i*4+3]=255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const scale = Math.min(1, maxW / d.width);
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(d.width * scale));
+  c.height = Math.max(1, Math.round(d.height * scale));
+  c.getContext('2d').drawImage(off, 0, 0, c.width, c.height);
+  return c;
+}
+
+/* -------------------------------------------------------------------------
+   Optional depth maps
+   ------------------------------------------------------------------------- */
+let depthPipeline = null, loadedBackend = null;
+
+runDepthBtn.onclick = async () => {
+  runDepthBtn.disabled = true;
+  try {
+    const { pipeline, env, RawImage } =
+      await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2');
+    env.allowLocalModels = false;
+    env.useBrowserCache = false;
+    env.useFSCache = false;
+    env.useCustomCache = false;
+
+    const backend = backendEl.value;
+    if (!depthPipeline || loadedBackend !== backend) {
+      log(`Loading depth model on ${backend}...`);
+      const t0 = performance.now();
+      depthPipeline = await pipeline('depth-estimation',
+        'onnx-community/depth-anything-v2-small', { device: backend, dtype:'fp32' });
+      loadedBackend = backend;
+      log(`Model ready in ${((performance.now()-t0)/1000).toFixed(2)}s`);
+    }
+
+    for (const s of slots) {
+      const url = imageDataToURL(s.imageData);
+      const image = await RawImage.fromURL(url);
+      const t0 = performance.now();
+      const { depth } = await depthPipeline(image);
+      s.depth = { width: depth.width, height: depth.height,
+                  data: Uint8Array.from(depth.data) };
+      log(`  ${s.label} depth in ${((performance.now()-t0)/1000).toFixed(2)}s`);
+      buildSlotUI();
+    }
+    log('Depth maps ready. Raise "Depth influence" above 0 to let them refine the carve.');
+  } catch (err) {
+    log(`Depth ERROR: ${err.message}`);
+    console.error(err);
+  } finally {
+    runDepthBtn.disabled = false;
+  }
+};
+
+function imageDataToURL(imgData) {
+  const c = document.createElement('canvas');
+  c.width = imgData.width; c.height = imgData.height;
+  c.getContext('2d').putImageData(imgData, 0, 0);
+  return c.toDataURL('image/png');
+}
+
+/* -------------------------------------------------------------------------
+   Three.js — deliberately last in the pipeline
+   ------------------------------------------------------------------------- */
+const renderer = new THREE.WebGLRenderer({
+  canvas: canvasEl, antialias: true, alpha: false,
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+// Filmic response keeps the white blocks from clipping to flat paper-white
+// where highlights pile up, which is what sells them as a solid material.
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf1f0ec);
+
+const camera = new THREE.PerspectiveCamera(38, 4/3, 0.01, 100);
+camera.position.set(1.25, 0.95, 1.55);
+const controls = new OrbitControls(camera, canvasEl);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.9;
+
+// Indirect light from a room probe gives the flat cube faces a gradient to
+// pick up; without it, every face of every block reads as one dead tone.
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const keyLight = new THREE.DirectionalLight(0xffffff, 2.1);
+keyLight.position.set(2.4, 3.4, 2.2);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(2048, 2048);
+keyLight.shadow.camera.near = 0.5;
+keyLight.shadow.camera.far = 12;
+keyLight.shadow.camera.left = -1.4;
+keyLight.shadow.camera.right = 1.4;
+keyLight.shadow.camera.top = 1.4;
+keyLight.shadow.camera.bottom = -1.4;
+keyLight.shadow.bias = -0.0006;
+keyLight.shadow.normalBias = 0.012;
+scene.add(keyLight);
+
+const fillLight = new THREE.DirectionalLight(0xdfe8ff, 0.55);
+fillLight.position.set(-2.6, 0.8, -1.6);
+scene.add(fillLight);
+
+const rimLight = new THREE.DirectionalLight(0xffffff, 0.7);
+rimLight.position.set(-0.6, -1.8, -2.4);
+scene.add(rimLight);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xcfcbc2, 0.35));
+
+// Shadow catcher, so the form has something to sit on.
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(12, 12),
+  new THREE.ShadowMaterial({ opacity: 0.20 })
+);
+ground.rotation.x = -Math.PI/2;
+ground.position.y = -0.62;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const axes = new THREE.AxesHelper(0.6);
+axes.visible = false;
+scene.add(axes);
+
+let currentMesh = null;
+let lastVolume = null;
+let lastLeaves = null;
+let composer = null, ssaoPass = null;
+
+function rebuildComposer() {
+  const w = Math.max(1, canvasEl.clientWidth);
+  const h = Math.max(1, canvasEl.clientHeight);
+  if (aoEl.value !== '1') { composer = null; ssaoPass = null; return; }
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  ssaoPass = new SSAOPass(scene, camera, w, h);
+  // Radius is in world units; the model spans about 1, so this stays inside
+  // block-to-block crevices instead of darkening whole limbs.
+  ssaoPass.kernelRadius = 0.022;
+  ssaoPass.minDistance = 0.0008;
+  ssaoPass.maxDistance = 0.06;
+  composer.addPass(ssaoPass);
+  composer.addPass(new OutputPass());
+  composer.setSize(w, h);
+}
+
+function applyShadowSettings() {
+  const on = shadowEl.value === '1';
+  keyLight.castShadow = on;
+  ground.visible = on;
+  if (currentMesh) {
+    currentMesh.castShadow = on;
+    currentMesh.receiveShadow = on;
+  }
+}
+
+function resize() {
+  const w = canvasEl.clientWidth, h = canvasEl.clientHeight;
+  if (w && h && (canvasEl.width !== w || canvasEl.height !== h)) {
+    renderer.setSize(w, h, false);
+    camera.aspect = w/h;
+    camera.updateProjectionMatrix();
+    if (composer) composer.setSize(w, h);
+  }
+}
+(function animate() {
+  resize();
+  controls.update();
+  if (composer) composer.render();
+  else renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+})();
+rebuildComposer();
+
+$('reset').onclick = () => {
+  camera.position.set(1.4, 1.1, 1.7);
+  controls.target.set(0,0,0);
+  controls.update();
+};
+$('toggleRotate').onclick = (e) => {
+  controls.autoRotate = !controls.autoRotate;
+  e.target.textContent = controls.autoRotate ? 'Pause rotation' : 'Resume rotation';
+};
+$('toggleAxes').onclick = (e) => {
+  axes.visible = !axes.visible;
+  e.target.textContent = axes.visible ? 'Hide axes' : 'Show axes';
+};
+$('toggleAxes').textContent = 'Show axes';
+
+optimizeBtn.onclick = async () => {
+  optimizeBtn.disabled = true;
+  buildBtn.disabled = true;
+  buildExactBtn.disabled = true;
+  const label = optimizeBtn.textContent;
+  optimizeBtn.textContent = 'Optimising…';
+  try {
+    for (const s of slots) if (!s.sil) computeSilhouette(s);
+    await optimizeAlignment();
+    runBuild({ render: true });
+  } catch (err) {
+    log(`Optimise ERROR: ${err.message}`);
+    console.error(err);
+  } finally {
+    optimizeBtn.textContent = label;
+    optimizeBtn.disabled = false;
+    buildBtn.disabled = false;
+    buildExactBtn.disabled = false;
+  }
+};
+
+function makeMaterial(finish, useColour) {
+  if (useColour) {
+    return new THREE.MeshStandardMaterial({ roughness: 0.62, metalness: 0.0 });
+  }
+  if (finish === 'porcelain') {
+    // Slight sheen and a whisper of clearcoat: white blocks read as ceramic
+    // rather than as untextured geometry.
+    return new THREE.MeshPhysicalMaterial({
+      color: 0xdedbd4, roughness: 0.38, metalness: 0.0,
+      clearcoat: 0.5, clearcoatRoughness: 0.32, envMapIntensity: 0.85,
+    });
+  }
+  return new THREE.MeshStandardMaterial({
+    color: 0xd6d3cb, roughness: 0.92, metalness: 0.0, envMapIntensity: 0.6,
+  });
+}
+
+function clearMesh() {
+  if (!currentMesh) return;
+  scene.remove(currentMesh);
+  currentMesh.geometry.dispose();
+  currentMesh.material.dispose();
+  currentMesh = null;
+}
+
+/* Octree leaves come in a range of sizes, so each instance carries its own
+   scale. Interior regions collapse into a handful of large cells, which is why
+   the instance count stays in the hundreds of thousands rather than the tens of
+   millions a dense grid at this detail would need. */
+function renderLeaves({ shell, leaves, maxLevel }) {
+  clearMesh();
+  // Draw the visible shell; enclosed blocks are still part of the solid for
+  // scoring purposes but contribute nothing on screen.
+  const draw = shell && shell.length ? shell : leaves;
+  const count = draw.length / 4;
+  if (!count) { log('Nothing to render — no solid leaves.'); return; }
+
+  const finish = finishEl.value;
+  const useColour = finish === 'colour';
+  const fillFactor = +gapEl.value;
+
+  const inst = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(1, 1, 1), makeMaterial(finish, useColour), count
+  );
+  inst.castShadow = shadowEl.value === '1';
+  inst.receiveShadow = shadowEl.value === '1';
+  inst.frustumCulled = false;
+
+  const dummy = new THREE.Object3D();
+  const col = new THREE.Color();
+  let minY = Infinity;
+  for (let i = 0, k = 0; i < draw.length; i += 4, k++) {
+    const cx = draw[i], cy = draw[i+1], cz = draw[i+2], size = draw[i+3];
+    dummy.position.set(cx, cy, cz);
+    dummy.scale.setScalar(size * fillFactor);
+    dummy.updateMatrix();
+    inst.setMatrixAt(k, dummy.matrix);
+    if (useColour) {
+      const [r,g,b] = voxelColor(cx, cy, cz);
+      col.setRGB(r/255, g/255, b/255).convertSRGBToLinear();
+      inst.setColorAt(k, col);
+    }
+    if (cy - size/2 < minY) minY = cy - size/2;
+  }
+  inst.instanceMatrix.needsUpdate = true;
+  if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+
+  ground.position.y = minY - 0.01;
+  currentMesh = inst;
+  scene.add(inst);
+
+  const n = 1 << maxLevel;
+  log(`Rendered ${count.toLocaleString()} blocks · finest ${(1/n).toFixed(6)} units ` +
+      `(1/${n} of the model) · ${finish}`);
+}
+
+function voxelColor(x, y, z) {
+  let r=0, g=0, b=0, wsum=0;
+  for (const s of slots) {
+    if (s.kind !== 'side') continue;
+    const p = project(s, x, y, z);
+    const im = toImage(s, p);
+    const c = sampleColor(s.imageData, im.u, im.v);
+    if (!c) continue;
+    // Weight toward whichever camera this voxel faces.
+    const w = Math.max(0.02, 0.5 + p.t);
+    r += c[0]*w; g += c[1]*w; b += c[2]*w; wsum += w;
+  }
+  if (!wsum) return [190, 200, 214];
+  return [r/wsum, g/wsum, b/wsum];
+}
+
+render3dBtn.onclick = () => {
+  if (lastLeaves) { renderLeaves(lastLeaves); return; }
+  if (!lastVolume) return;
+  const { N, occ } = lastVolume;
+  clearMesh();
+  const at = (x,y,z) => occ[y*N*N + z*N + x];
+  const surface = [];
+  for (let y=0; y<N; y++) for (let z=0; z<N; z++) for (let x=0; x<N; x++) {
+    if (!at(x,y,z)) continue;
+    const edge = (x===0||x===N-1||y===0||y===N-1||z===0||z===N-1);
+    if (edge || !at(x-1,y,z) || !at(x+1,y,z) || !at(x,y-1,z) ||
+        !at(x,y+1,z) || !at(x,y,z-1) || !at(x,y,z+1)) surface.push([x,y,z]);
+  }
+  if (!surface.length) { log('Nothing to render — the volume is empty.'); return; }
+
+  const cs = 1 / N;
+  const fillFactor = +gapEl.value;
+  const finish = finishEl.value;
+  const useColour = finish === 'colour';
+
+  const material = makeMaterial(finish, useColour);
+
+  const inst = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(cs * fillFactor, cs * fillFactor, cs * fillFactor),
+    material,
+    surface.length
+  );
+  inst.castShadow = shadowEl.value === '1';
+  inst.receiveShadow = shadowEl.value === '1';
+  // The volume never moves after it is built, so skip per-frame frustum work.
+  inst.frustumCulled = false;
+
+  const dummy = new THREE.Object3D();
+  const col = new THREE.Color();
+  for (let i=0; i<surface.length; i++) {
+    const [ix,iy,iz] = surface[i];
+    const x = -0.5 + (ix+0.5)*cs, y = -0.5 + (iy+0.5)*cs, z = -0.5 + (iz+0.5)*cs;
+    dummy.position.set(x, y, z);
+    dummy.updateMatrix();
+    inst.setMatrixAt(i, dummy.matrix);
+    if (useColour) {
+      const [r,g,b] = voxelColor(x, y, z);
+      col.setRGB(r/255, g/255, b/255).convertSRGBToLinear();
+      inst.setColorAt(i, col);
+    }
+  }
+  inst.instanceMatrix.needsUpdate = true;
+  if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+
+  // Drop the model onto the shadow plane rather than floating above it.
+  const bounds = new THREE.Box3().setFromObject(inst);
+  ground.position.y = bounds.min.y - cs * 0.5;
+
+  currentMesh = inst;
+  scene.add(inst);
+
+  const blockMm = (1000 / N).toFixed(1);
+  log(`Rendered ${surface.length.toLocaleString()} blocks · ` +
+      `${(cs*fillFactor).toFixed(5)} units each ` +
+      `(1/${N} of the model, ~${blockMm}mm on a 1m object) · ${finish}`);
+};
+
+/* -------------------------------------------------------------------------
+   Main action
+   ------------------------------------------------------------------------- */
+function runBuild({ render = false } = {}) {
+  buildBtn.disabled = true;
+  buildExactBtn.disabled = true;
+  try {
+    for (const s of slots) if (!s.sil) computeSilhouette(s);
+    log(`Silhouette modes — ${slots.map((s) => `${s.label}:${s.sil.mode}`).join('  ')}`);
+    for (const s of slots) {
+      if (!s.bbox) log(`WARNING: ${s.label} has an empty mask. Adjust the threshold.`);
+    }
+
+    const volume = carve();
+    lastVolume = volume;
+    lastLeaves = null;          // dense grid supersedes any octree result
+    const results = scoreAll(volume.N, volume.occ);
+    renderScoreboard(results);
+    renderComparison(results);
+
+    const totalMissing = results.reduce((a, r) => a + r.missed, 0);
+    log(totalMissing === 0
+      ? 'Every mask pixel is accounted for — zero missing across all views.'
+      : `${totalMissing.toLocaleString()} mask pixels still unexplained.`);
+
+    const hasVolume = volume.occ.some((v) => v);
+    render3dBtn.disabled = !hasVolume;
+    if (render && hasVolume) render3dBtn.click();
+  } catch (err) {
+    log(`ERROR: ${err.message}`);
+    console.error(err);
+  } finally {
+    buildBtn.disabled = false;
+    buildExactBtn.disabled = false;
+  }
+}
+
+buildBtn.onclick = () => runBuild();
+
+buildOneBtn.onclick = async () => {
+  const busy = [buildOneBtn, buildBtn, buildExactBtn, optimizeBtn];
+  busy.forEach((b) => b.disabled = true);
+  const label = buildOneBtn.textContent;
+  try {
+    for (const s of slots) if (!s.sil) computeSilhouette(s);
+    const maxLevel = +lvlEl.value;
+    log(`Replicating at 1/${1 << maxLevel} — octree carve starting`);
+
+    const result = await carveOctree(maxLevel, (visited, found) => {
+      buildOneBtn.textContent =
+        `Carving… ${visited.toLocaleString()} cells, ${found.toLocaleString()} blocks`;
+    });
+    buildOneBtn.textContent = 'Scoring…';
+    await new Promise((r) => setTimeout(r, 0));
+
+    const results = scoreLeaves(result);
+    renderScoreboard(results);
+    renderComparison(results);
+    const totalMissing = results.reduce((a, r) => a + r.missed, 0);
+    log(totalMissing === 0
+      ? 'Every mask pixel is accounted for — zero missing across all views.'
+      : `${totalMissing.toLocaleString()} mask pixels still unexplained.`);
+
+    lastVolume = null;          // the dense-grid renderer does not apply here
+    lastLeaves = result;
+    render3dBtn.disabled = false;
+    renderLeaves(result);
+  } catch (err) {
+    log(`ERROR: ${err.message}`);
+    console.error(err);
+  } finally {
+    buildOneBtn.textContent = label;
+    busy.forEach((b) => b.disabled = false);
+  }
+};
+
+buildExactBtn.onclick = () => {
+  if (buildModeEl.value !== 'exact') {
+    buildModeEl.value = 'exact';
+    buildModeEl.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  runBuild({ render: true });
+};
+
+buildSlotUI();
+log('Ready. Load six views — the mask thumbnail under each one tells you');
+log('immediately whether detection is working. Fix the masks first; carving');
+log('can only ever be as good as the silhouettes you feed it.');
+log('Depth is optional and off by default, for the reason stated in the panel.');
+</script>
+</body>
+</html>

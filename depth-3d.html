@@ -1,0 +1,313 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Depth → 3D</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --border:#2a2f3a; --text:#e6e8ee;
+          --muted:#8b93a7; --accent:#7cc4ff; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font-family: ui-sans-serif, system-ui, sans-serif; overflow:hidden; }
+  .app { display:grid; grid-template-columns:320px 1fr; height:100vh; }
+  .panel { background:var(--panel); border-right:1px solid var(--border);
+    padding:20px; overflow-y:auto; }
+  h1 { font-size:16px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:12px; margin-bottom:20px; }
+  .field { margin-bottom:14px; }
+  label { display:block; font-size:12px; color:var(--muted); margin-bottom:6px; }
+  input[type=file], select, button {
+    width:100%; background:#0b0d12; color:var(--text);
+    border:1px solid var(--border); border-radius:6px; padding:8px; font-size:13px;
+  }
+  input[type=range] { width:100%; }
+  .val { color:var(--accent); font-size:12px; font-variant-numeric: tabular-nums; }
+  button { cursor:pointer; }
+  button.primary { background:var(--accent); color:#06121e; border:0; font-weight:600;
+    margin-top:8px; }
+  button:disabled { opacity:0.5; cursor:not-allowed; }
+  .stage { position:relative; }
+  #canvas { width:100%; height:100%; display:block; }
+  #log { position:absolute; bottom:12px; left:12px; right:12px;
+    background:rgba(11,13,18,0.85); border:1px solid var(--border);
+    border-radius:6px; padding:8px 12px; font-family:ui-monospace,monospace;
+    font-size:11px; color:var(--muted); max-height:120px; overflow-y:auto;
+    white-space:pre-wrap; pointer-events:none; }
+  .thumbs { display:flex; gap:8px; margin-top:12px; }
+  .thumbs canvas, .thumbs img { width:50%; border:1px solid var(--border);
+    border-radius:4px; background:#0b0d12; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div class="app">
+  <aside class="panel">
+    <h1>Depth → 3D</h1>
+    <div class="sub">v1 · Depth Anything + Three.js</div>
+
+    <div class="field">
+      <label>Image</label>
+      <input id="file" type="file" accept="image/*" />
+    </div>
+
+    <div class="field">
+      <label>Backend</label>
+      <select id="backend">
+        <option value="webgpu">WebGPU</option>
+        <option value="wasm">WASM</option>
+      </select>
+    </div>
+
+    <button id="run" class="primary" disabled>Run depth & build 3D</button>
+
+    <div class="field" style="margin-top:20px;">
+      <label>Mesh resolution <span class="val" id="resVal">256</span></label>
+      <input id="res" type="range" min="64" max="512" value="256" step="32" />
+    </div>
+
+    <div class="field">
+      <label>Depth scale <span class="val" id="scaleVal">0.35</span></label>
+      <input id="scale" type="range" min="0" max="1.5" value="0.35" step="0.01" />
+    </div>
+
+    <div class="field">
+      <label>Style</label>
+      <select id="style">
+        <option value="textured">Textured (color)</option>
+        <option value="depth">Depth shaded</option>
+        <option value="wire">Wireframe</option>
+      </select>
+    </div>
+
+    <div class="thumbs">
+      <img id="srcThumb" alt="source" />
+      <canvas id="depthThumb"></canvas>
+    </div>
+  </aside>
+
+  <main class="stage">
+    <canvas id="canvas"></canvas>
+    <div id="log"></div>
+  </main>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { pipeline, env, RawImage } from
+  'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2';
+
+env.allowLocalModels = false;
+env.useBrowserCache = false;
+env.useFSCache = false;
+env.useCustomCache = false;
+
+const $ = (id) => document.getElementById(id);
+const fileEl = $('file'), runBtn = $('run'), backendEl = $('backend'),
+      resEl = $('res'), scaleEl = $('scale'), styleEl = $('style'),
+      resVal = $('resVal'), scaleVal = $('scaleVal'),
+      logEl = $('log'), srcThumb = $('srcThumb'), depthThumb = $('depthThumb'),
+      canvasEl = $('canvas');
+
+const log = (m) => {
+  const t = new Date().toLocaleTimeString();
+  logEl.textContent += `[${t}] ${m}\n`;
+  logEl.scrollTop = logEl.scrollHeight;
+};
+
+resEl.oninput = () => { resVal.textContent = resEl.value; };
+scaleEl.oninput = () => {
+  scaleVal.textContent = (+scaleEl.value).toFixed(2);
+  if (mesh) mesh.material.displacementScale = +scaleEl.value;
+};
+styleEl.onchange = () => rebuildMaterial();
+
+// ---------- Three.js scene ----------
+const renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0f1115);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
+camera.position.set(0, 0, 2.2);
+const controls = new OrbitControls(camera, canvasEl);
+controls.enableDamping = true;
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const key = new THREE.DirectionalLight(0xffffff, 1.0);
+key.position.set(2, 2, 3);
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x7cc4ff, 0.4);
+rim.position.set(-2, -1, -2);
+scene.add(rim);
+
+let mesh = null;
+let colorTexture = null;
+let depthTexture = null;
+
+function resize() {
+  const w = canvasEl.clientWidth, h = canvasEl.clientHeight;
+  if (canvasEl.width !== w || canvasEl.height !== h) {
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+}
+function animate() {
+  resize();
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+animate();
+
+// ---------- Model + pipeline ----------
+let depthPipeline = null;
+let loadedBackend = null;
+let imageURL = null;
+
+fileEl.onchange = (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  if (imageURL) URL.revokeObjectURL(imageURL);
+  imageURL = URL.createObjectURL(f);
+  srcThumb.src = imageURL;
+  runBtn.disabled = false;
+  log(`Loaded: ${f.name}`);
+};
+
+runBtn.onclick = async () => {
+  if (!imageURL) return;
+  runBtn.disabled = true;
+  try {
+    const backend = backendEl.value;
+    if (!depthPipeline || loadedBackend !== backend) {
+      log(`Loading depth model on ${backend}…`);
+      const t0 = performance.now();
+      depthPipeline = await pipeline(
+        'depth-estimation',
+        'onnx-community/depth-anything-v2-small',
+        { device: backend, dtype: 'fp32' }
+      );
+      loadedBackend = backend;
+      log(`Model ready in ${((performance.now()-t0)/1000).toFixed(2)}s`);
+    }
+
+    log('Running inference…');
+    const t1 = performance.now();
+    const image = await RawImage.fromURL(imageURL);
+    const { depth } = await depthPipeline(image);
+    log(`Inference: ${((performance.now()-t1)/1000).toFixed(2)}s (${depth.width}×${depth.height})`);
+
+    // Preview depth on thumb
+    drawDepthThumb(depth);
+
+    // Build textures
+    colorTexture = await loadColorTexture(imageURL);
+    depthTexture = depthToTexture(depth);
+
+    buildMesh(depth.width, depth.height);
+  } catch (err) {
+    log(`ERROR: ${err.message}`);
+    console.error(err);
+  } finally {
+    runBtn.disabled = false;
+  }
+};
+
+function drawDepthThumb(depth) {
+  depthThumb.width = depth.width;
+  depthThumb.height = depth.height;
+  const ctx = depthThumb.getContext('2d');
+  const img = ctx.createImageData(depth.width, depth.height);
+  for (let i = 0; i < depth.width * depth.height; i++) {
+    const v = depth.data[i];
+    img.data[i*4] = v; img.data[i*4+1] = v; img.data[i*4+2] = v; img.data[i*4+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function depthToTexture(depth) {
+  // depth.data is Uint8Array, single channel
+  const { width, height, data } = depth;
+  // Upload as luminance-in-RGBA for maximum compatibility
+  const rgba = new Uint8Array(width * height * 4);
+  for (let i = 0; i < width * height; i++) {
+    rgba[i*4] = data[i]; rgba[i*4+1] = data[i];
+    rgba[i*4+2] = data[i]; rgba[i*4+3] = 255;
+  }
+  const tex = new THREE.DataTexture(rgba, width, height, THREE.RGBAFormat);
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  tex.flipY = true;
+  return tex;
+}
+
+function loadColorTexture(url) {
+  return new Promise((resolve, reject) => {
+    new THREE.TextureLoader().load(url, (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      resolve(tex);
+    }, undefined, reject);
+  });
+}
+
+function buildMesh(depthW, depthH) {
+  if (mesh) {
+    scene.remove(mesh);
+    mesh.geometry.dispose();
+    mesh.material.dispose();
+  }
+  const segs = +resEl.value;
+  const aspect = depthW / depthH;
+  const w = aspect >= 1 ? 1.6 : 1.6 * aspect;
+  const h = aspect >= 1 ? 1.6 / aspect : 1.6;
+  const segX = aspect >= 1 ? segs : Math.round(segs * aspect);
+  const segY = aspect >= 1 ? Math.round(segs / aspect) : segs;
+  const geom = new THREE.PlaneGeometry(w, h, segX, segY);
+  mesh = new THREE.Mesh(geom, makeMaterial());
+  scene.add(mesh);
+  log(`Mesh: ${segX}×${segY} segments`);
+}
+
+function makeMaterial() {
+  const style = styleEl.value;
+  const displacementScale = +scaleEl.value;
+  if (style === 'wire') {
+    return new THREE.MeshStandardMaterial({
+      color: 0x7cc4ff, wireframe: true,
+      displacementMap: depthTexture, displacementScale,
+    });
+  }
+  if (style === 'depth') {
+    return new THREE.MeshStandardMaterial({
+      map: depthTexture,
+      displacementMap: depthTexture, displacementScale,
+      roughness: 0.9, metalness: 0.0,
+    });
+  }
+  return new THREE.MeshStandardMaterial({
+    map: colorTexture,
+    displacementMap: depthTexture, displacementScale,
+    roughness: 0.8, metalness: 0.0,
+  });
+}
+
+function rebuildMaterial() {
+  if (!mesh) return;
+  mesh.material.dispose();
+  mesh.material = makeMaterial();
+}
+
+log('Ready. Load an image, then click "Run".');
+log('Drag to orbit · scroll to zoom · right-drag to pan.');
+</script>
+</body>
+</html>

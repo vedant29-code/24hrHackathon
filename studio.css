@@ -1,0 +1,172 @@
+/* =============================================================================
+   studio.css — the editorial system, applied to the working screens
+
+   The tools inherit the front page's language: paper rather than console, one
+   high-contrast serif carrying every title, a quiet sans for everything that
+   explains, and hairlines instead of boxes. Loaded after each screen's own
+   stylesheet, so redefining the tokens re-skins the existing components without
+   touching their markup.
+   ============================================================================= */
+
+:root {
+  --paper:   #fdfdfc;
+  --ink:     #0b0b0b;
+  --serif:   'Instrument Serif', 'Playfair Display', Georgia, serif;
+  --sans:    'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  /* Tokens the screens already reference, re-pointed at the paper palette. */
+  --bg:      #fdfdfc;
+  --panel:   #fdfdfc;
+  --card:    #f4f3f0;
+  --border:  #d9d7d1;
+  --text:    #0b0b0b;
+  --muted:   #76756f;
+  --dim:     #a3a29c;
+  --accent:  #0b0b0b;
+  --violet:  #5b3fa0;
+  --good:    #1c7a4a;
+  --warn:    #8a6a1c;
+  --bad:     #a8342b;
+}
+
+body { font-family: var(--sans); }
+
+/* ---- Titles -------------------------------------------------------------
+   Every screen's masthead becomes display type. The size is deliberately far
+   above the interface around it: the page should announce what it is before it
+   presents controls. */
+.brand {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(30px, 2.6vw, 46px);
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+  margin-bottom: 6px;
+}
+.tagline { color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+
+/* Section headings sit as small caps over a hairline, the front page's
+   "Featured work" device. */
+h2 {
+  font-family: var(--sans) !important;
+  font-size: 10.5px !important;
+  letter-spacing: .09em !important;
+  text-transform: uppercase;
+  color: var(--dim) !important;
+  border-top: 1px solid var(--ink) !important;
+  padding-top: 12px !important;
+  font-weight: 500 !important;
+}
+h2:first-of-type { border-top: 0 !important; }
+
+.step-title { font-family: var(--serif); font-size: 21px; font-weight: 400; }
+.step-num {
+  background: transparent !important;
+  color: var(--dim) !important;
+  border: 1px solid var(--border);
+  font-family: var(--sans);
+  font-size: 10px !important;
+}
+.step.active .step-num { background: var(--ink) !important; color: var(--paper) !important;
+  border-color: var(--ink); }
+.step.done .step-num  { background: transparent !important; color: var(--ink) !important;
+  border-color: var(--ink); }
+
+/* ---- Surfaces -----------------------------------------------------------
+   Panels are the same paper as the page; a single hairline does the work a
+   filled box used to. */
+.panel { background: var(--paper) !important; border-right: 1px solid var(--ink) !important; }
+.stage { background: var(--paper) !important; }
+
+.view {
+  background: var(--paper) !important;
+  border: 1px dashed var(--border) !important;
+  border-radius: 0 !important;
+}
+.view:hover { background: #f7f6f3 !important; border-color: var(--ink) !important; }
+.view.hot   { background: #f2f1ec !important; border-color: var(--ink) !important;
+              border-style: solid !important; }
+.view.filled { border-style: solid !important; border-color: var(--border) !important; }
+.view .name { font-family: var(--serif); font-size: 15px !important; font-weight: 400 !important; }
+.view .cta  { color: var(--ink) !important; }
+
+/* ---- Controls -----------------------------------------------------------
+   Underlines rather than filled fields: the control should read as a line of
+   the document, not a widget pasted onto it. */
+select, input[type=file] {
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--ink) !important;
+  border-radius: 0 !important;
+  padding: 7px 0 !important;
+  color: var(--ink) !important;
+}
+select:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+input[type=range] { accent-color: var(--ink); }
+
+button {
+  background: transparent;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  color: var(--ink);
+  font-family: var(--sans);
+  letter-spacing: .01em;
+  transition: background .15s, color .15s;
+}
+button:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
+button.big, .big {
+  background: var(--ink) !important;
+  color: var(--paper) !important;
+  border: 1px solid var(--ink) !important;
+  border-radius: 0 !important;
+  font-family: var(--serif) !important;
+  font-size: 20px !important;
+  font-weight: 400 !important;
+  letter-spacing: 0 !important;
+  padding: 12px !important;
+}
+.big:hover:not(:disabled) { background: var(--paper) !important; color: var(--ink) !important; }
+.big:disabled { background: transparent !important; color: var(--dim) !important;
+  border-color: var(--border) !important; }
+button:disabled { border-color: var(--border); color: var(--dim); }
+
+.big.violet { background: var(--violet) !important; border-color: var(--violet) !important;
+  color: var(--paper) !important; }
+.big.violet:hover:not(:disabled) { background: var(--paper) !important;
+  color: var(--violet) !important; }
+
+/* ---- Notes, tips, reports ---------------------------------------------- */
+.note, .tip, .report, .badge, .statusbar, .pane-label, .console {
+  background: var(--paper) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 0 !important;
+  backdrop-filter: none !important;
+  color: var(--muted) !important;
+}
+.pane-label .t { font-family: var(--serif); font-weight: 400 !important;
+  font-size: 19px !important; }
+#labelA .t { color: var(--ink) !important; }
+#labelB .t { color: var(--violet) !important; }
+.verdict { font-family: var(--serif); font-weight: 400 !important; font-size: 19px !important; }
+
+.empty h2 {
+  font-family: var(--serif) !important;
+  font-size: clamp(26px, 3.2vw, 44px) !important;
+  text-transform: none !important;
+  letter-spacing: -0.01em !important;
+  color: var(--ink) !important;
+  border: 0 !important;
+  padding: 0 !important;
+  font-weight: 400 !important;
+}
+.empty .icon { display: none; }
+.empty p { color: var(--muted); }
+
+/* ---- The viewport -------------------------------------------------------
+   The one element that stays a plate: a rendered object wants a defined edge,
+   the way a photograph is placed on a page rather than bled into it. */
+#canvas { background: #f1f0ec; }
+.divider { background: var(--border) !important; }
+
+#log { color: var(--muted); }
+.toolbar button { background: var(--paper); }

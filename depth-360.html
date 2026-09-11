@@ -1,0 +1,414 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Depth → 360°</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --border:#2a2f3a; --text:#e6e8ee;
+          --muted:#8b93a7; --accent:#7cc4ff; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font-family: ui-sans-serif, system-ui, sans-serif; overflow:hidden; }
+  .app { display:grid; grid-template-columns:320px 1fr; height:100vh; }
+  .panel { background:var(--panel); border-right:1px solid var(--border);
+    padding:20px; overflow-y:auto; }
+  h1 { font-size:16px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:12px; margin-bottom:16px; }
+  .warn { background:#2a1f10; border:1px solid #5a3a10; color:#ffcf80;
+    padding:8px 10px; border-radius:6px; font-size:11px; line-height:1.5;
+    margin-bottom:16px; }
+  .field { margin-bottom:14px; }
+  label { display:block; font-size:12px; color:var(--muted); margin-bottom:6px; }
+  input[type=file], select, button {
+    width:100%; background:#0b0d12; color:var(--text);
+    border:1px solid var(--border); border-radius:6px; padding:8px; font-size:13px;
+  }
+  input[type=range] { width:100%; }
+  .val { color:var(--accent); font-size:12px; font-variant-numeric:tabular-nums; }
+  button { cursor:pointer; }
+  button.primary { background:var(--accent); color:#06121e; border:0;
+    font-weight:600; margin-top:8px; }
+  button:disabled { opacity:0.5; cursor:not-allowed; }
+  #canvas { width:100%; height:100%; display:block; }
+  .stage { position:relative; }
+  #log { position:absolute; bottom:12px; left:12px; right:12px;
+    background:rgba(11,13,18,0.85); border:1px solid var(--border);
+    border-radius:6px; padding:8px 12px; font-family:ui-monospace,monospace;
+    font-size:11px; color:var(--muted); max-height:120px; overflow-y:auto;
+    white-space:pre-wrap; pointer-events:none; }
+  .thumbs { display:flex; gap:8px; margin-top:12px; }
+  .thumbs img, .thumbs canvas { width:50%; border:1px solid var(--border);
+    border-radius:4px; background:#0b0d12; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div class="app">
+  <aside class="panel">
+    <h1>Depth → 360°</h1>
+    <div class="sub">closed shell from a single view</div>
+
+    <div class="warn">
+      The back of the object was never photographed. The back surface here
+      is a <b>mirror hallucination</b> of the front depth — plausible, not accurate.
+    </div>
+
+    <div class="field">
+      <label>Image</label>
+      <input id="file" type="file" accept="image/*" />
+    </div>
+    <div class="field">
+      <label>Backend</label>
+      <select id="backend">
+        <option value="webgpu">WebGPU</option>
+        <option value="wasm">WASM</option>
+      </select>
+    </div>
+    <button id="run" class="primary" disabled>Run depth & build 360°</button>
+
+    <div class="field" style="margin-top:20px;">
+      <label>Mesh resolution <span class="val" id="resVal">192</span></label>
+      <input id="res" type="range" min="64" max="384" value="192" step="16" />
+    </div>
+    <div class="field">
+      <label>Front depth <span class="val" id="frontVal">0.35</span></label>
+      <input id="front" type="range" min="0" max="1.5" value="0.35" step="0.01" />
+    </div>
+    <div class="field">
+      <label>Back depth <span class="val" id="backVal">0.20</span></label>
+      <input id="back" type="range" min="0" max="1.5" value="0.20" step="0.01" />
+    </div>
+    <div class="field">
+      <label>Background cutoff <span class="val" id="cutVal">0.15</span></label>
+      <input id="cut" type="range" min="0" max="1" value="0.15" step="0.01" />
+    </div>
+    <div class="field">
+      <label>Auto-rotate</label>
+      <select id="rot"><option value="1">On</option><option value="0">Off</option></select>
+    </div>
+
+    <div class="thumbs">
+      <img id="srcThumb" alt="source" />
+      <canvas id="depthThumb"></canvas>
+    </div>
+  </aside>
+
+  <main class="stage">
+    <canvas id="canvas"></canvas>
+    <div id="log"></div>
+  </main>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { pipeline, env, RawImage } from
+  'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2';
+
+env.allowLocalModels = false;
+env.useBrowserCache = false;
+env.useFSCache = false;
+env.useCustomCache = false;
+
+const $ = (id) => document.getElementById(id);
+const fileEl=$('file'), runBtn=$('run'), backendEl=$('backend'),
+      resEl=$('res'), frontEl=$('front'), backEl=$('back'), cutEl=$('cut'),
+      rotEl=$('rot'), resVal=$('resVal'), frontVal=$('frontVal'),
+      backVal=$('backVal'), cutVal=$('cutVal'),
+      logEl=$('log'), srcThumb=$('srcThumb'), depthThumb=$('depthThumb'),
+      canvasEl=$('canvas');
+
+const log = (m) => {
+  logEl.textContent += `[${new Date().toLocaleTimeString()}] ${m}\n`;
+  logEl.scrollTop = logEl.scrollHeight;
+};
+
+resEl.oninput = () => resVal.textContent = resEl.value;
+frontEl.oninput = () => { frontVal.textContent = (+frontEl.value).toFixed(2); rebuild(); };
+backEl.oninput  = () => { backVal.textContent  = (+backEl.value).toFixed(2);  rebuild(); };
+cutEl.oninput   = () => { cutVal.textContent   = (+cutEl.value).toFixed(2);   rebuild(); };
+rotEl.onchange  = () => controls.autoRotate = rotEl.value === '1';
+
+// ---------- three.js ----------
+const renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0f1115);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
+camera.position.set(0, 0, 2.5);
+const controls = new OrbitControls(camera, canvasEl);
+controls.enableDamping = true;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 1.2;
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const key = new THREE.DirectionalLight(0xffffff, 1.0); key.position.set(2,2,3); scene.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, 0.5); fill.position.set(-2,1,-2); scene.add(fill);
+const rim = new THREE.DirectionalLight(0x7cc4ff, 0.5); rim.position.set(0,-2,-3); scene.add(rim);
+
+let group = null;
+let lastDepth = null; // {width,height,data}
+let colorTex = null;
+
+function resize() {
+  const w = canvasEl.clientWidth, h = canvasEl.clientHeight;
+  if (canvasEl.width !== w || canvasEl.height !== h) {
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h; camera.updateProjectionMatrix();
+  }
+}
+function animate() {
+  resize(); controls.update(); renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+animate();
+
+// ---------- pipeline ----------
+let depthPipeline = null, loadedBackend = null, imageURL = null;
+
+fileEl.onchange = (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  if (imageURL) URL.revokeObjectURL(imageURL);
+  imageURL = URL.createObjectURL(f);
+  srcThumb.src = imageURL;
+  runBtn.disabled = false;
+  log(`Loaded: ${f.name}`);
+};
+
+runBtn.onclick = async () => {
+  if (!imageURL) return;
+  runBtn.disabled = true;
+  try {
+    const backend = backendEl.value;
+    if (!depthPipeline || loadedBackend !== backend) {
+      log(`Loading depth model on ${backend}…`);
+      const t0 = performance.now();
+      depthPipeline = await pipeline(
+        'depth-estimation',
+        'onnx-community/depth-anything-v2-small',
+        { device: backend, dtype: 'fp32' }
+      );
+      loadedBackend = backend;
+      log(`Model ready in ${((performance.now()-t0)/1000).toFixed(2)}s`);
+    }
+    log('Running inference…');
+    const t1 = performance.now();
+    const image = await RawImage.fromURL(imageURL);
+    const { depth } = await depthPipeline(image);
+    log(`Inference: ${((performance.now()-t1)/1000).toFixed(2)}s (${depth.width}×${depth.height})`);
+
+    lastDepth = { width: depth.width, height: depth.height, data: depth.data };
+    drawDepthThumb(lastDepth);
+    colorTex = await loadColorTexture(imageURL);
+
+    rebuild();
+  } catch (err) {
+    log(`ERROR: ${err.message}`); console.error(err);
+  } finally {
+    runBtn.disabled = false;
+  }
+};
+
+function drawDepthThumb(d) {
+  depthThumb.width = d.width; depthThumb.height = d.height;
+  const ctx = depthThumb.getContext('2d');
+  const img = ctx.createImageData(d.width, d.height);
+  for (let i = 0; i < d.width * d.height; i++) {
+    const v = d.data[i];
+    img.data[i*4] = v; img.data[i*4+1] = v; img.data[i*4+2] = v; img.data[i*4+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function loadColorTexture(url) {
+  return new Promise((res, rej) => {
+    new THREE.TextureLoader().load(url, (t) => {
+      t.colorSpace = THREE.SRGBColorSpace; res(t);
+    }, undefined, rej);
+  });
+}
+
+// ---------- 360° shell builder ----------
+// Resample depth to segsX × segsY, then build a closed mesh:
+//   front vertex Z = +depth * frontScale
+//   back  vertex Z = -depth * backScale
+// Sample cells with depth < cutoff are treated as background — clipped from the mesh
+// (creates a silhouetted shell rather than a full rectangular slab).
+function rebuild() {
+  if (!lastDepth) return;
+  if (group) {
+    scene.remove(group);
+    group.traverse((o) => { if (o.geometry) o.geometry.dispose();
+                            if (o.material) o.material.dispose(); });
+    group = null;
+  }
+  const segsRequested = +resEl.value;
+  const frontScale = +frontEl.value;
+  const backScale = +backEl.value;
+  const cutoff = +cutEl.value; // 0..1 normalized depth threshold
+
+  const dw = lastDepth.width, dh = lastDepth.height;
+  const aspect = dw / dh;
+  const segX = aspect >= 1 ? segsRequested : Math.round(segsRequested * aspect);
+  const segY = aspect >= 1 ? Math.round(segsRequested / aspect) : segsRequested;
+  const gx = segX + 1, gy = segY + 1;
+
+  // Sample depth to gx × gy grid (bilinear)
+  const D = new Float32Array(gx * gy);
+  let dmin = 1, dmax = 0;
+  for (let j = 0; j < gy; j++) {
+    const fy = (j / (gy - 1)) * (dh - 1);
+    const y0 = Math.floor(fy), y1 = Math.min(dh - 1, y0 + 1);
+    const ty = fy - y0;
+    for (let i = 0; i < gx; i++) {
+      const fx = (i / (gx - 1)) * (dw - 1);
+      const x0 = Math.floor(fx), x1 = Math.min(dw - 1, x0 + 1);
+      const tx = fx - x0;
+      const a = lastDepth.data[y0 * dw + x0];
+      const b = lastDepth.data[y0 * dw + x1];
+      const c = lastDepth.data[y1 * dw + x0];
+      const d = lastDepth.data[y1 * dw + x1];
+      const top = a * (1 - tx) + b * tx;
+      const bot = c * (1 - tx) + d * tx;
+      const v = (top * (1 - ty) + bot * ty) / 255; // 0..1
+      D[j * gx + i] = v;
+      if (v < dmin) dmin = v; if (v > dmax) dmax = v;
+    }
+  }
+  // Normalize into 0..1 across observed range so cutoff is stable per image
+  const range = Math.max(1e-6, dmax - dmin);
+  for (let i = 0; i < D.length; i++) D[i] = (D[i] - dmin) / range;
+
+  // Mask: which cells (gx-1 × gy-1) are "foreground" — all 4 corners above cutoff
+  const cellOn = new Uint8Array((gx - 1) * (gy - 1));
+  for (let j = 0; j < gy - 1; j++) {
+    for (let i = 0; i < gx - 1; i++) {
+      const d00 = D[j*gx+i], d10 = D[j*gx+i+1],
+            d01 = D[(j+1)*gx+i], d11 = D[(j+1)*gx+i+1];
+      const on = (d00 > cutoff) && (d10 > cutoff) && (d01 > cutoff) && (d11 > cutoff);
+      cellOn[j*(gx-1)+i] = on ? 1 : 0;
+    }
+  }
+
+  // Only mark vertices used by any ON cell
+  const vertOn = new Uint8Array(gx * gy);
+  for (let j = 0; j < gy - 1; j++) {
+    for (let i = 0; i < gx - 1; i++) {
+      if (!cellOn[j*(gx-1)+i]) continue;
+      vertOn[j*gx+i] = 1; vertOn[j*gx+i+1] = 1;
+      vertOn[(j+1)*gx+i] = 1; vertOn[(j+1)*gx+i+1] = 1;
+    }
+  }
+
+  // Build vertex arrays: front + back copies
+  const worldW = aspect >= 1 ? 1.6 : 1.6 * aspect;
+  const worldH = aspect >= 1 ? 1.6 / aspect : 1.6;
+
+  const frontIdx = new Int32Array(gx * gy).fill(-1);
+  const backIdx = new Int32Array(gx * gy).fill(-1);
+  const positions = []; const uvs = [];
+
+  for (let j = 0; j < gy; j++) {
+    for (let i = 0; i < gx; i++) {
+      if (!vertOn[j*gx+i]) continue;
+      const u = i / (gx - 1);
+      const v = 1 - j / (gy - 1);
+      const x = (u - 0.5) * worldW;
+      const y = (v - 0.5) * worldH;
+      const d = D[j*gx+i];
+      // front
+      frontIdx[j*gx+i] = positions.length / 3;
+      positions.push(x, y, d * frontScale);
+      uvs.push(u, v);
+      // back
+      backIdx[j*gx+i] = positions.length / 3;
+      positions.push(x, y, -d * backScale);
+      uvs.push(u, v);
+    }
+  }
+
+  const indices = [];
+  // Front faces (CCW facing +Z)
+  for (let j = 0; j < gy - 1; j++) {
+    for (let i = 0; i < gx - 1; i++) {
+      if (!cellOn[j*(gx-1)+i]) continue;
+      const a = frontIdx[j*gx+i], b = frontIdx[j*gx+i+1],
+            c = frontIdx[(j+1)*gx+i], d = frontIdx[(j+1)*gx+i+1];
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+  // Back faces (reverse winding, facing -Z)
+  for (let j = 0; j < gy - 1; j++) {
+    for (let i = 0; i < gx - 1; i++) {
+      if (!cellOn[j*(gx-1)+i]) continue;
+      const a = backIdx[j*gx+i], b = backIdx[j*gx+i+1],
+            c = backIdx[(j+1)*gx+i], d = backIdx[(j+1)*gx+i+1];
+      indices.push(a, b, c, b, d, c);
+    }
+  }
+  // Side seam: every edge that is between an ON cell and (OFF cell or boundary)
+  const edgeCells = (i0, j0, i1, j1) => {
+    const c0 = (i0 >= 0 && j0 >= 0 && i0 < gx-1 && j0 < gy-1) ? cellOn[j0*(gx-1)+i0] : 0;
+    const c1 = (i1 >= 0 && j1 >= 0 && i1 < gx-1 && j1 < gy-1) ? cellOn[j1*(gx-1)+i1] : 0;
+    return [c0, c1];
+  };
+  const addSide = (vaIdx, vbIdx) => {
+    const fa = frontIdx[vaIdx], fb = frontIdx[vbIdx];
+    const ba = backIdx[vaIdx], bb = backIdx[vbIdx];
+    if (fa < 0 || fb < 0 || ba < 0 || bb < 0) return;
+    // quad fa-fb-bb-ba
+    indices.push(fa, fb, bb, fa, bb, ba);
+  };
+  // Horizontal edges (between rows j-1 and j at column i..i+1)
+  for (let j = 0; j <= gy - 1; j++) {
+    for (let i = 0; i < gx - 1; i++) {
+      const [above, below] = edgeCells(i, j - 1, i, j);
+      if (above !== below) {
+        const va = j*gx + i, vb = j*gx + i + 1;
+        if (below && !above) addSide(va, vb);
+        else addSide(vb, va);
+      }
+    }
+  }
+  // Vertical edges (between cols i-1 and i at row j..j+1)
+  for (let i = 0; i <= gx - 1; i++) {
+    for (let j = 0; j < gy - 1; j++) {
+      const [left, right] = edgeCells(i - 1, j, i, j);
+      if (left !== right) {
+        const va = j*gx + i, vb = (j + 1)*gx + i;
+        if (right && !left) addSide(vb, va);
+        else addSide(va, vb);
+      }
+    }
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geom.setIndex(indices);
+  geom.computeVertexNormals();
+
+  const mat = new THREE.MeshStandardMaterial({
+    map: colorTex, roughness: 0.85, metalness: 0.0, side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geom, mat);
+
+  group = new THREE.Group();
+  group.add(mesh);
+  scene.add(group);
+
+  log(`Shell: ${segX}×${segY} · verts ${positions.length/3} · tris ${indices.length/3}`);
+}
+
+log('Ready. Load an image, click Run.');
+log('The back is a mirror of the front — that is the honest limit of one photo.');
+</script>
+</body>
+</html>
