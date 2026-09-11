@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Physics Engine Track - Full F1 Grand Prix Spline & Traction Limits</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <!-- Engineering Telemetry HUD (Monochrome / Technical) -->
+  <div id="hud">
+    <header class="hud-header">
+      <div class="hud-title-group">
+        <h1 class="hud-title">F1 GRAND PRIX SPLINE // SLOPE 0 & PACEJKA TRACTION LIMITS</h1>
+        <span class="hud-badge" id="engine-status">RUNNING (240Hz)</span>
+      </div>
+      <div class="hud-meta">
+        <span id="fps-display">60.0 FPS</span>
+        <span class="sep">|</span>
+        <span id="step-time-display">0.10 ms</span>
+      </div>
+    </header>
+
+    <!-- Diagnostics Panel -->
+    <div class="hud-card" id="telemetry-card">
+      <div class="card-title">TELEMETRY & KINEMATICS</div>
+      <div class="stat-grid">
+        <div class="stat-item">
+          <span class="stat-label">VELOCITY</span>
+          <span class="stat-val" id="val-vel">0.00 m/s</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">G-FORCE</span>
+          <span class="stat-val" id="val-gforce">1.00 G</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">ELEVATION (SLOPE)</span>
+          <span class="stat-val" id="val-elev">0.00 m (SLOPE 0)</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">CURVATURE & RADIUS</span>
+          <span class="stat-val" id="val-curvature">κ = 0.000 (R = ∞)</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">CENTRIPETAL ACCEL</span>
+          <span class="stat-val" id="val-centripetal">0.00 m/s²</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">KINETIC ENERGY</span>
+          <span class="stat-val" id="val-ke">0.00 kJ</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Physics Compliance & Grip Limits Panel -->
+    <div class="hud-card" id="f1-card">
+      <div class="card-title">PHYSICS LAWS & TRACTION LIMITS</div>
+      <div class="stat-grid">
+        <div class="stat-item">
+          <span class="stat-label">PHYSICS COMPLIANCE</span>
+          <span class="stat-val" id="val-physics-status">VALID (GRIP NOMINAL)</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">TRACTION RATIO</span>
+          <span class="stat-val" id="val-traction-ratio">0.40x (SAFE)</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">DEMANDED FORCE</span>
+          <span class="stat-val" id="val-demanded-force">0 N</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">MAX AVAILABLE GRIP</span>
+          <span class="stat-val" id="val-max-grip">18,500 N</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">GEAR & RPM</span>
+          <span class="stat-val" id="val-gear-rpm">G4 // 7,200 RPM</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">TIRE CONTACT</span>
+          <span class="stat-val" id="val-tire-contact">4 FLUSH (0.0mm)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Engine Performance Panel -->
+    <div class="hud-card" id="performance-card">
+      <div class="card-title">ENGINE PERFORMANCE</div>
+      <div class="stat-grid">
+        <div class="stat-item">
+          <span class="stat-label">ACTIVE BODIES</span>
+          <span class="stat-val" id="val-bodies">1</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">LINE DEVIATION</span>
+          <span class="stat-val" id="val-line-offset">0.00 m</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">SUBSTEPS / FRAME</span>
+          <span class="stat-val" id="val-substeps">4 (240Hz)</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">DRAW CALLS</span>
+          <span class="stat-val" id="val-drawcalls">~4</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interactive Parameter Deck -->
+    <div class="hud-card" id="controls-card">
+      <div class="card-title">CORNERING SPEED & PHYSICS SETUP</div>
+
+      <!-- Target Speed Slider -->
+      <div class="control-row">
+        <label for="slider-target-speed"><span>TARGET SPEED (STRAIGHTS)</span><span class="ctrl-val"><span id="txt-target-speed">240</span> km/h</span></label>
+        <input type="range" id="slider-target-speed" min="80" max="360" step="5" value="240">
+      </div>
+
+      <!-- Tire Compound Selection -->
+      <div class="control-section-label">F1 TIRE COMPOUND (PACEJKA)</div>
+      <div class="compound-grid">
+        <button id="btn-compound-soft" class="eng-btn active-toggle" title="Soft Slick (C5): Highest grip limit μ=1.85">SOFT (C5)</button>
+        <button id="btn-compound-med" class="eng-btn" title="Medium Slick (C3): Balanced μ=1.65">MED (C3)</button>
+        <button id="btn-compound-hard" class="eng-btn" title="Hard Slick (C1): Low grip μ=1.45 (Fails earlier!)">HARD (C1)</button>
+      </div>
+
+      <!-- Vehicle Model Selector -->
+      <div class="control-section-label">VEHICLE CONFIG</div>
+      <div class="toggle-row no-margin">
+        <button id="btn-veh-f1" class="eng-btn active-toggle">F1 RACE CAR</button>
+        <button id="btn-veh-sphere" class="eng-btn">CAD SPHERE</button>
+      </div>
+
+      <div class="control-row">
+        <label for="slider-friction"><span>ASPHALT FRICTION SCALE</span><span class="ctrl-val" id="txt-friction">1.00</span></label>
+        <input type="range" id="slider-friction" min="0.2" max="2.0" step="0.05" value="1.0">
+      </div>
+      <div class="control-row">
+        <label for="slider-timescale"><span>TIME SCALE</span><span class="ctrl-val"><span id="txt-timescale">1.00</span>x</span></label>
+        <input type="range" id="slider-timescale" min="0.1" max="2.0" step="0.1" value="1.0">
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="btn-grid">
+        <button id="btn-smart-braking" class="eng-btn active-toggle" title="Intelligent cornering deceleration based on upcoming spline curvature [B]">RACE CRUISE [B]</button>
+        <button id="btn-auto-accelerate" class="eng-btn" title="Accelerate with 100% WOT without corner braking until friction limit causes crash [A]">ATTACK (100% WOT) [A]</button>
+        <button id="btn-impulse" class="eng-btn" title="Exceed cornering grip with turbo boost [SPACE]">EXCEED BOOST [SPACE]</button>
+        <button id="btn-reset" class="eng-btn" title="Reset car back to the start/finish line [R]">RESET TO START [R]</button>
+        <button id="btn-toggle-line" class="eng-btn" title="Toggle invisible line visibility [L]">SHOW LINE [L]</button>
+        <button id="btn-spawn-10" class="eng-btn" title="Spawn 10 dynamic physics bodies along circuit">SPAWN +10 MULTI</button>
+      </div>
+
+      <!-- View & Debug Toggles -->
+      <div class="toggle-row">
+        <button id="btn-cam-follow" class="eng-btn active-toggle">CAM: ONBOARD CHASE</button>
+        <button id="btn-cam-orbit" class="eng-btn">CAM: ORBIT</button>
+        <button id="btn-toggle-vectors" class="eng-btn active-toggle">VECTORS: ON</button>
+        <button id="btn-toggle-wireframe" class="eng-btn">WIREFRAME: OFF</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
