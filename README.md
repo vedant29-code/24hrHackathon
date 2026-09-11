@@ -1,19 +1,26 @@
-# 🏎️ 24hrHackathon // 3D Physics Engine Track - F1 Grand Prix Spline Circuit
+# 🏎️ 24hrHackathon // 3D Voxel F1 Grand Prix Engine & Traction Limits
 
-A high-performance, real-time 3D Formula 1 vehicle dynamics simulation and custom physics engine built with **Three.js** and vanilla ES modules.
+A high-performance, real-time 3D Voxel Formula 1 vehicle dynamics simulation and custom physics engine built with **Three.js** and vanilla ES modules.
 
-Features an authentic **closed multi-turn F1 Grand Prix Catmull-Rom spline circuit** at **Slope = 0 (100% flat at $y = 0.00\text{ m}$)**, dynamic **Pure Pursuit path tracking**, front/rear tire slip angles with **Pacejka '89 Magic Formula lateral friction**, and realistic **traction-limit barrier crashes** with spark particle physics.
+Features an authentic **closed multi-turn F1 Grand Prix Catmull-Rom spline circuit** rendered via **ultra-high-efficiency GPU-instanced voxel geometry (`THREE.InstancedMesh`)** at **Slope = 0 (100% flat at $y = 0.00\text{ m}$)**, a detailed procedural **Voxel F1 race car**, dynamic **Pure Pursuit path tracking**, front/rear tire slip angles with **Pacejka '89 Magic Formula lateral friction**, and realistic **traction-limit barrier crashes** with tumbling **3D voxel debris physics**.
 
 ---
 
 ## 🌟 Key Features
 
-- **Full Multi-Turn F1 Grand Prix Circuit**:
+- **GPU-Instanced Voxel Grand Prix Circuit**:
   - Closed 20-point Catmull-Rom spline with centripetal parameterization (`TrackSpline.js`).
   - Monza / Silverstone inspired layout: Main Straight, Rettifilo chicane, Curva Grande sweeper, Variante della Roggia, Lesmo 1 & 2, Serraglio straight, Ascari complex, back straight, and Parabolica sweeping hairpin.
-  - 100% flat elevation (Slope = 0) with asphalt bed, FIA red/white curbs, runoff borders, and perimeter Armco crash barriers.
+  - ~12,800 volumetric voxel blocks rendered in **only 4–5 draw calls**: 10 columns of asphalt voxels, stepped FIA red/white kerb voxels, runoff tiles, stacked perimeter Armco barrier blocks, and dashed voxel racing line.
+  - 100% flat elevation (Slope = 0) with $0.0\text{ mm}$ road variance.
   - Precomputed 2,400-sample Frenet frame lookup table with arc length $s$, tangent $\mathbf{T}$, normal $\mathbf{N}$, binormal $\mathbf{B}$, and exact curvature $\kappa(s)$.
   - $O(1)$ spatial hash grid for microsecond nearest-point queries.
+
+- **Procedural Voxel F1 Car & Voxel Crash Debris**:
+  - Detailed voxel bodywork: stepped nosecone, multi-element front wing, cockpit with 3D halo safety arc, driver helmet block, sculpted sidepods, engine cover shark fin, and dual-plane rear wing.
+  - Steerable front voxel wheels & rolling rear voxel wheels.
+  - 4-wheel flush ground contact: hub at $y = 0.36\text{ m}$, wheel radius $0.36\text{ m}$, touching the voxel asphalt at $y = 0.00\text{ m}$ ($0.0\text{ mm}$ gap).
+  - 3D Tumbling Voxel Debris: 36 instanced carbon chunks & sparking ember cubes that scatter, tumble with 3-axis rotational velocity, and bounce realistically on the asphalt upon barrier collision.
 
 - **Realtime Vehicle Dynamics & Physics Engine**:
   - **Pure Pursuit Steering**: Dynamically calculates front wheel angle $\delta = \arctan(L \cdot \kappa_{\text{target}})$ towards lookahead targets along the center spline line.

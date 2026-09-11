@@ -3,12 +3,19 @@ import { F1TireModel } from '../physics/F1TireModel.js';
 import { F1VehiclePhysics } from '../physics/F1VehiclePhysics.js';
 
 /**
- * 3D Procedural Formula 1 Car with authentic 4-wheel ground contact,
- * realistic suspension, steering geometry, and CAD monochrome aesthetic.
+ * 3D Procedural Voxel Formula 1 Car.
+ * Features:
+ * - Built entirely out of stylized CAD volumetric voxel blocks.
+ * - Multi-element voxel front wing, tapered voxel nose, cockpit with halo safety arc,
+ *   driver helmet block, sculpted sidepods, engine cover shark fin, and dual-plane rear wing.
+ * - Dynamic steerable front voxel wheel assemblies & rolling rear voxel wheels.
+ * - 4-wheel flush ground contact: hub at y = 0.36m, bottom at y = 0.00m (0.0mm gap).
+ * - Tumbling 3D Voxel Crash Debris: carbon chunks & sparking ember cubes that scatter,
+ *   rotate, and bounce off the flat asphalt on impact.
  */
 export class F1Car {
   constructor(options = {}) {
-    this.id = options.id || 'f1-car-01';
+    this.id = options.id || 'voxel-f1-car';
     this.isCar = true;
     this.isLead = true;
 
@@ -23,7 +30,7 @@ export class F1Car {
     this.mass = 798.0; // kg
     this.invMass = 1.0 / this.mass;
 
-    // Physical state & Polar Coordinates
+    // Physical state
     this.r = options.r !== undefined ? options.r : 120.0;
     this.theta = options.theta !== undefined ? options.theta : 0.0;
     this.vr = options.vr !== undefined ? options.vr : 0.0;
@@ -38,7 +45,7 @@ export class F1Car {
     this.heading = new THREE.Vector3(-Math.sin(this.theta), 0, Math.cos(this.theta));
 
     // Friction, Tire & Suspension Dynamics
-    this.restitution = 0.1; // Realistic stiff race car damping
+    this.restitution = 0.1;
     this.friction = 1.65;
     this.tireModel = new F1TireModel();
 
@@ -52,7 +59,7 @@ export class F1Car {
     // Wheel nodes & steering pivots
     this.wheelRollNodes = [];
     this.frontSteerNodes = [];
-    this.mesh = this.buildF1Mesh();
+    this.mesh = this.buildVoxelF1Mesh();
 
     // 4-Wheel Suspension & Powertrain System
     this.suspension = new F1VehiclePhysics(this, options.trackSpline);
@@ -83,30 +90,49 @@ export class F1Car {
 
     this.wheelRotAngle = 0;
 
-    // Skid & Crash sparks particle system
-    this.initSparks();
+    // 3D Voxel Debris & Sparks System
+    this.initVoxelDebris();
   }
 
-  initSparks() {
-    this.sparkCount = 45;
-    const sparkGeo = new THREE.BufferGeometry();
-    const positions = new Float32Array(this.sparkCount * 3);
-    sparkGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  initVoxelDebris() {
+    this.debrisCount = 36;
+    const debrisGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
 
-    const sparkMat = new THREE.PointsMaterial({
+    this.debrisMaterial = new THREE.MeshStandardMaterial({
       color: 0xffffff,
-      size: 0.18,
-      transparent: true,
-      opacity: 0.85
+      roughness: 0.3,
+      metalness: 0.8
     });
 
-    this.sparkPoints = new THREE.Points(sparkGeo, sparkMat);
-    this.sparkVelocities = [];
-    this.sparkLifetimes = [];
-    for (let i = 0; i < this.sparkCount; i++) {
-      this.sparkVelocities.push(new THREE.Vector3());
-      this.sparkLifetimes.push(0);
+    this.sparkPoints = new THREE.InstancedMesh(debrisGeo, this.debrisMaterial, this.debrisCount);
+    this.sparkPoints.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+    this.debrisVelocities = [];
+    this.debrisRotations = [];
+    this.debrisRotSpeeds = [];
+    this.debrisLifetimes = [];
+    this.debrisPositions = [];
+
+    const dummy = new THREE.Object3D();
+    dummy.position.set(0, -100, 0);
+    dummy.updateMatrix();
+
+    const colorEmber = new THREE.Color(0xffffff);
+    const colorCarbon = new THREE.Color(0x2d3436);
+
+    for (let i = 0; i < this.debrisCount; i++) {
+      this.debrisVelocities.push(new THREE.Vector3());
+      this.debrisRotations.push(new THREE.Euler());
+      this.debrisRotSpeeds.push(new THREE.Vector3());
+      this.debrisLifetimes.push(0);
+      this.debrisPositions.push(new THREE.Vector3(0, -100, 0));
+
+      this.sparkPoints.setMatrixAt(i, dummy.matrix);
+      this.sparkPoints.setColorAt(i, i % 2 === 0 ? colorEmber : colorCarbon);
     }
+
+    this.sparkPoints.instanceMatrix.needsUpdate = true;
+    if (this.sparkPoints.instanceColor) this.sparkPoints.instanceColor.needsUpdate = true;
   }
 
   triggerCrash(impactSpeedKmh, normal) {
@@ -114,50 +140,78 @@ export class F1Car {
     this.crashSpeedKmh = impactSpeedKmh;
     this.isOffTrack = true;
 
-    // Emit intense burst of sparks in reflection direction
-    const posAttr = this.sparkPoints.geometry.attributes.position;
-    for (let i = 0; i < this.sparkCount; i++) {
-      posAttr.setXYZ(i, this.position.x, this.position.y + 0.2, this.position.z);
-      this.sparkLifetimes[i] = 0.4 + Math.random() * 0.6;
+    // Explode tumbling 3D voxel cubes in reflection direction
+    for (let i = 0; i < this.debrisCount; i++) {
+      this.debrisPositions[i].set(
+        this.position.x + (Math.random() - 0.5) * 0.8,
+        this.position.y + 0.2 + Math.random() * 0.3,
+        this.position.z + (Math.random() - 0.5) * 0.8
+      );
+      this.debrisLifetimes[i] = 0.6 + Math.random() * 0.8;
 
-      const spread = (Math.random() - 0.5) * 12.0;
-      this.sparkVelocities[i].set(
-        normal.x * (10.0 + Math.random() * 15.0) - normal.z * spread,
-        2.0 + Math.random() * 6.0,
-        normal.z * (10.0 + Math.random() * 15.0) + normal.x * spread
+      const spread = (Math.random() - 0.5) * 14.0;
+      this.debrisVelocities[i].set(
+        normal.x * (12.0 + Math.random() * 16.0) - normal.z * spread,
+        3.0 + Math.random() * 7.0,
+        normal.z * (12.0 + Math.random() * 16.0) + normal.x * spread
+      );
+
+      this.debrisRotSpeeds[i].set(
+        (Math.random() - 0.5) * 20.0,
+        (Math.random() - 0.5) * 20.0,
+        (Math.random() - 0.5) * 20.0
       );
     }
-    posAttr.needsUpdate = true;
   }
 
   updateSparks(dt) {
     let hasActive = false;
-    const posAttr = this.sparkPoints.geometry.attributes.position;
+    const dummy = new THREE.Object3D();
 
-    for (let i = 0; i < this.sparkCount; i++) {
-      if (this.sparkLifetimes[i] > 0) {
+    for (let i = 0; i < this.debrisCount; i++) {
+      if (this.debrisLifetimes[i] > 0) {
         hasActive = true;
-        this.sparkLifetimes[i] -= dt;
+        this.debrisLifetimes[i] -= dt;
 
-        let px = posAttr.getX(i) + this.sparkVelocities[i].x * dt;
-        let py = posAttr.getY(i) + this.sparkVelocities[i].y * dt;
-        let pz = posAttr.getZ(i) + this.sparkVelocities[i].z * dt;
+        const pos = this.debrisPositions[i];
+        const vel = this.debrisVelocities[i];
+        const rot = this.debrisRotations[i];
+        const rotSpd = this.debrisRotSpeeds[i];
 
-        this.sparkVelocities[i].y -= 9.81 * dt; // Gravity
+        pos.x += vel.x * dt;
+        pos.y += vel.y * dt;
+        pos.z += vel.z * dt;
 
-        // Bounce off flat ground at y = 0
-        if (py < 0.02) {
-          py = 0.02;
-          this.sparkVelocities[i].y *= -0.4;
-          this.sparkVelocities[i].x *= 0.8;
-          this.sparkVelocities[i].z *= 0.8;
+        vel.y -= 14.0 * dt; // Gravity
+
+        // Ground bounce at flat asphalt y = 0.06m (half cube height)
+        if (pos.y < 0.06) {
+          pos.y = 0.06;
+          vel.y = -vel.y * 0.45;
+          vel.x *= 0.75;
+          vel.z *= 0.75;
         }
 
-        posAttr.setXYZ(i, px, py, pz);
+        rot.x += rotSpd.x * dt;
+        rot.y += rotSpd.y * dt;
+        rot.z += rotSpd.z * dt;
+
+        dummy.position.copy(pos);
+        dummy.rotation.copy(rot);
+        const scale = Math.min(1.0, this.debrisLifetimes[i] * 2.0);
+        dummy.scale.set(scale, scale, scale);
+        dummy.updateMatrix();
+
+        this.sparkPoints.setMatrixAt(i, dummy.matrix);
+      } else {
+        dummy.position.set(0, -100, 0);
+        dummy.updateMatrix();
+        this.sparkPoints.setMatrixAt(i, dummy.matrix);
       }
     }
+
     if (hasActive) {
-      posAttr.needsUpdate = true;
+      this.sparkPoints.instanceMatrix.needsUpdate = true;
     }
   }
 
@@ -169,131 +223,139 @@ export class F1Car {
     this.steerAngle = 0.0;
     this.yawRate = 0.0;
 
-    const posAttr = this.sparkPoints.geometry.attributes.position;
-    for (let i = 0; i < this.sparkCount; i++) {
-      this.sparkLifetimes[i] = 0;
-      posAttr.setXYZ(i, 0, -10, 0);
+    const dummy = new THREE.Object3D();
+    dummy.position.set(0, -100, 0);
+    dummy.updateMatrix();
+
+    for (let i = 0; i < this.debrisCount; i++) {
+      this.debrisLifetimes[i] = 0;
+      this.debrisPositions[i].set(0, -100, 0);
+      this.sparkPoints.setMatrixAt(i, dummy.matrix);
     }
-    posAttr.needsUpdate = true;
+    this.sparkPoints.instanceMatrix.needsUpdate = true;
   }
 
-  buildF1Mesh() {
-    const group = new THREE.Group();
+  buildVoxelF1Mesh() {
+    const carGroup = new THREE.Group();
 
-    // Clean CAD Monochromatic Palette
+    // Voxel Material Palette (Clean CAD Engineering Monochrome)
     const bodyMat = new THREE.MeshStandardMaterial({
-      color: 0x2e323a,
-      roughness: 0.45,
-      metalness: 0.4
+      color: 0x2e333d,
+      roughness: 0.4,
+      metalness: 0.45
     });
 
-    const darkAeroMat = new THREE.MeshStandardMaterial({
-      color: 0x16171a,
-      roughness: 0.7,
-      metalness: 0.15
+    const carbonMat = new THREE.MeshStandardMaterial({
+      color: 0x15161a,
+      roughness: 0.75,
+      metalness: 0.2
+    });
+
+    const highlightMat = new THREE.MeshStandardMaterial({
+      color: 0xecf0f1,
+      roughness: 0.35,
+      metalness: 0.3
     });
 
     const tireMat = new THREE.MeshStandardMaterial({
-      color: 0x101113,
-      roughness: 0.9,
+      color: 0x111215,
+      roughness: 0.95,
       metalness: 0.05
     });
 
-    const wheelRimMat = new THREE.MeshStandardMaterial({
-      color: 0x858b96,
-      roughness: 0.25,
+    const rimMat = new THREE.MeshStandardMaterial({
+      color: 0x8a92a0,
+      roughness: 0.2,
       metalness: 0.85
     });
 
-    // 1. Monocoque / Cockpit (Chassis base sits 0.06m above wheel bottom)
-    const monocoqueGeo = new THREE.BoxGeometry(0.72, 0.45, 3.2);
-    const monocoque = new THREE.Mesh(monocoqueGeo, bodyMat);
-    monocoque.position.set(0, 0.08, 0);
-    monocoque.castShadow = true;
-    group.add(monocoque);
+    const redLedMat = new THREE.MeshStandardMaterial({
+      color: 0xe74c3c,
+      roughness: 0.2,
+      emissive: 0xe74c3c,
+      emissiveIntensity: 0.8
+    });
 
-    // 2. Tapered Nose Cone
-    const noseGeo = new THREE.ConeGeometry(0.36, 1.4, 4);
-    noseGeo.rotateX(Math.PI / 2);
-    const nose = new THREE.Mesh(noseGeo, bodyMat);
-    nose.position.set(0, 0.05, 2.1);
-    nose.scale.set(1.0, 0.55, 1.0);
-    nose.castShadow = true;
-    group.add(nose);
+    // Helper to add voxel box
+    const addVoxel = (w, h, l, x, y, z, mat, parent = carGroup) => {
+      const geo = new THREE.BoxGeometry(w, h, l);
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      parent.add(mesh);
+      return mesh;
+    };
 
-    // 3. Front Wing (Low to ground for ground effect)
-    const frontWingGeo = new THREE.BoxGeometry(1.85, 0.04, 0.45);
-    const frontWing = new THREE.Mesh(frontWingGeo, darkAeroMat);
-    frontWing.position.set(0, -0.15, 2.5);
-    frontWing.castShadow = true;
-    group.add(frontWing);
+    // 1. Monocoque / Main Voxel Tub (Chassis origin is at wheel center y = 0.0)
+    addVoxel(0.72, 0.32, 2.2, 0, 0.04, 0.4, bodyMat);
+    // Lower floor plank
+    addVoxel(1.5, 0.06, 2.8, 0, -0.18, 0.1, carbonMat);
 
-    // Endplates
-    const endplateGeo = new THREE.BoxGeometry(0.04, 0.24, 0.5);
-    const endplateL = new THREE.Mesh(endplateGeo, darkAeroMat);
-    endplateL.position.set(-0.92, -0.05, 2.5);
-    group.add(endplateL);
-    const endplateR = new THREE.Mesh(endplateGeo, darkAeroMat);
-    endplateR.position.set(0.92, -0.05, 2.5);
-    group.add(endplateR);
+    // 2. Stepped Voxel Nosecone (tapering to front)
+    addVoxel(0.56, 0.26, 0.6, 0, 0.05, 1.7, bodyMat);
+    addVoxel(0.42, 0.20, 0.5, 0, 0.03, 2.15, bodyMat);
+    addVoxel(0.28, 0.15, 0.4, 0, 0.00, 2.5, bodyMat);
 
-    // 4. Sidepods & Floor Underbody
-    const sidepodGeo = new THREE.BoxGeometry(0.4, 0.32, 1.6);
-    const sidepodL = new THREE.Mesh(sidepodGeo, bodyMat);
-    sidepodL.position.set(-0.56, 0.06, -0.2);
-    sidepodL.castShadow = true;
-    group.add(sidepodL);
-    const sidepodR = new THREE.Mesh(sidepodGeo, bodyMat);
-    sidepodR.position.set(0.56, 0.06, -0.2);
-    sidepodR.castShadow = true;
-    group.add(sidepodR);
+    // 3. Voxel Front Wing Assembly
+    // Main lower wing plane
+    addVoxel(1.9, 0.06, 0.42, 0, -0.22, 2.65, carbonMat);
+    // Upper cascade wing
+    addVoxel(1.7, 0.05, 0.24, 0, -0.14, 2.55, carbonMat);
+    // Endplates (Left & Right)
+    addVoxel(0.06, 0.24, 0.52, -0.96, -0.14, 2.65, bodyMat);
+    addVoxel(0.06, 0.24, 0.52, 0.96, -0.14, 2.65, bodyMat);
 
-    // Floor Plank / Diffuser (Sits 0.04m above road surface)
-    const floorGeo = new THREE.BoxGeometry(1.65, 0.04, 2.8);
-    const floor = new THREE.Mesh(floorGeo, darkAeroMat);
-    floor.position.set(0, -0.22, -0.1);
-    group.add(floor);
+    // 4. Voxel Sidepods & Aerodynamic Intakes
+    // Left sidepod
+    addVoxel(0.42, 0.30, 1.4, -0.54, 0.04, -0.1, bodyMat);
+    addVoxel(0.38, 0.24, 0.2, -0.54, 0.04, 0.62, carbonMat); // Intake grille
+    // Right sidepod
+    addVoxel(0.42, 0.30, 1.4, 0.54, 0.04, -0.1, bodyMat);
+    addVoxel(0.38, 0.24, 0.2, 0.54, 0.04, 0.62, carbonMat); // Intake grille
 
-    // 5. Cockpit, Halo & Airbox
-    const haloTorus = new THREE.TorusGeometry(0.24, 0.035, 8, 16, Math.PI);
-    haloTorus.rotateX(Math.PI / 2);
-    const halo = new THREE.Mesh(haloTorus, darkAeroMat);
-    halo.position.set(0, 0.35, 0.45);
-    group.add(halo);
+    // 5. Cockpit, Voxel Halo & Driver Helmet
+    // Cockpit opening interior
+    addVoxel(0.44, 0.14, 0.8, 0, 0.18, 0.2, carbonMat);
+    // Driver Helmet Voxel
+    addVoxel(0.22, 0.22, 0.24, 0, 0.28, 0.15, highlightMat);
+    // Helmet Visor
+    addVoxel(0.20, 0.08, 0.06, 0, 0.28, 0.28, carbonMat);
 
-    const airboxGeo = new THREE.BoxGeometry(0.12, 0.45, 1.1);
-    const airbox = new THREE.Mesh(airboxGeo, bodyMat);
-    airbox.position.set(0, 0.42, -0.5);
-    airbox.castShadow = true;
-    group.add(airbox);
+    // Voxel Halo Safety Structure
+    addVoxel(0.06, 0.22, 0.06, 0, 0.26, 0.52, carbonMat); // Center strut
+    addVoxel(0.44, 0.05, 0.06, 0, 0.37, 0.36, carbonMat); // Top horizontal bar
+    addVoxel(0.06, 0.05, 0.44, -0.22, 0.37, 0.15, carbonMat); // Left hoop bar
+    addVoxel(0.06, 0.05, 0.44, 0.22, 0.37, 0.15, carbonMat); // Right hoop bar
 
-    // 6. Rear Wing Assembly with DRS flap
-    const rearWingGeo = new THREE.BoxGeometry(1.25, 0.05, 0.4);
-    this.rearWing = new THREE.Mesh(rearWingGeo, darkAeroMat);
-    this.rearWing.position.set(0, 0.62, -1.85);
-    this.rearWing.castShadow = true;
-    group.add(this.rearWing);
+    // 6. Engine Cover & Voxel Shark Fin
+    addVoxel(0.28, 0.38, 1.1, 0, 0.32, -0.65, bodyMat);
+    // Vertical stepped shark fin
+    addVoxel(0.06, 0.46, 1.3, 0, 0.45, -0.85, carbonMat);
 
-    const pylonL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.55, 0.08), darkAeroMat);
-    pylonL.position.set(-0.25, 0.35, -1.8);
-    group.add(pylonL);
-    const pylonR = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.55, 0.08), darkAeroMat);
-    pylonR.position.set(0.25, 0.35, -1.8);
-    group.add(pylonR);
+    // 7. Voxel Rear Wing Assembly
+    const rearWingGroup = new THREE.Group();
+    // Dual horizontal wing planes
+    addVoxel(1.3, 0.06, 0.38, 0, 0.60, -1.85, carbonMat, rearWingGroup);
+    addVoxel(1.25, 0.05, 0.22, 0, 0.72, -1.92, highlightMat, rearWingGroup);
+    // Wing endplates
+    addVoxel(0.06, 0.48, 0.45, -0.66, 0.56, -1.88, bodyMat, rearWingGroup);
+    addVoxel(0.06, 0.48, 0.45, 0.66, 0.56, -1.88, bodyMat, rearWingGroup);
+    // Support pylons
+    addVoxel(0.06, 0.52, 0.08, -0.22, 0.32, -1.82, carbonMat, rearWingGroup);
+    addVoxel(0.06, 0.52, 0.08, 0.22, 0.32, -1.82, carbonMat, rearWingGroup);
+    // Rain light LED voxel
+    addVoxel(0.12, 0.10, 0.06, 0, -0.05, -1.78, redLedMat, rearWingGroup);
+    carGroup.add(rearWingGroup);
+    this.rearWing = rearWingGroup;
 
-    // 7. Four Wheels (Hub centered at y = 0, so bottom touches road at -0.36m)
+    // 8. Four Voxel Wheels (Radius = 0.36m, hub at y = 0.0, bottom touches road at y = -0.36m)
     const wheelPositions = [
-      { x: -0.9, y: 0.0, z: 1.6, isFront: true },   // Front Left
-      { x: 0.9, y: 0.0, z: 1.6, isFront: true },    // Front Right
-      { x: -0.85, y: 0.0, z: -1.5, isFront: false }, // Rear Left
-      { x: 0.85, y: 0.0, z: -1.5, isFront: false }  // Rear Right
+      { x: -0.92, y: 0.0, z: 1.55, isFront: true },   // Front Left
+      { x: 0.92, y: 0.0, z: 1.55, isFront: true },    // Front Right
+      { x: -0.88, y: 0.0, z: -1.45, isFront: false }, // Rear Left
+      { x: 0.88, y: 0.0, z: -1.45, isFront: false }  // Rear Right
     ];
-
-    const wheelGeo = new THREE.CylinderGeometry(this.wheelRadius, this.wheelRadius, 0.36, 20);
-    wheelGeo.rotateZ(Math.PI / 2);
-
-    const rimGeo = new THREE.CylinderGeometry(this.wheelRadius * 0.56, this.wheelRadius * 0.56, 0.37, 14);
-    rimGeo.rotateZ(Math.PI / 2);
 
     for (const wp of wheelPositions) {
       const steerPivot = new THREE.Group();
@@ -301,15 +363,25 @@ export class F1Car {
 
       const rollPivot = new THREE.Group();
 
-      const tireMesh = new THREE.Mesh(wheelGeo, tireMat);
-      tireMesh.castShadow = true;
-      rollPivot.add(tireMesh);
+      // Voxel wheel: octagonal/faceted voxel assembly
+      const wWidth = wp.isFront ? 0.34 : 0.40;
+      const wD = 0.72; // diameter = 2 * 0.36m
 
-      const rimMesh = new THREE.Mesh(rimGeo, wheelRimMat);
-      rollPivot.add(rimMesh);
+      // Main voxel tire block
+      const tireBlock1 = new THREE.Mesh(new THREE.BoxGeometry(wWidth, wD, wD * 0.72), tireMat);
+      tireBlock1.castShadow = true;
+      rollPivot.add(tireBlock1);
+
+      const tireBlock2 = new THREE.Mesh(new THREE.BoxGeometry(wWidth * 0.98, wD * 0.72, wD), tireMat);
+      tireBlock2.castShadow = true;
+      rollPivot.add(tireBlock2);
+
+      // Center rim voxel cap
+      const rimCap = new THREE.Mesh(new THREE.BoxGeometry(wWidth + 0.02, 0.34, 0.34), rimMat);
+      rollPivot.add(rimCap);
 
       steerPivot.add(rollPivot);
-      group.add(steerPivot);
+      carGroup.add(steerPivot);
 
       this.wheelRollNodes.push(rollPivot);
       if (wp.isFront) {
@@ -317,8 +389,8 @@ export class F1Car {
       }
     }
 
-    group.position.copy(this.position);
-    return group;
+    carGroup.position.copy(this.position);
+    return carGroup;
   }
 
   updateMeshTransform(steerAngle = 0) {
@@ -344,11 +416,6 @@ export class F1Car {
       this.vectorArrow.setDirection(dir);
       this.vectorArrow.setLength(Math.min(speed * 0.18, 8.0), 0.5, 0.25);
       this.vectorArrow.position.copy(this.position);
-    }
-
-    // DRS Flap animation
-    if (this.rearWing) {
-      this.rearWing.rotation.x = this.tireModel.drsActive ? -0.32 : 0;
     }
   }
 

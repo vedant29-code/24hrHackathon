@@ -51,33 +51,29 @@ export class RigidBody {
   createVisualMesh(isLead) {
     const group = new THREE.Group();
 
-    // Solid core sphere
-    const sphereGeo = new THREE.SphereGeometry(this.radius, 24, 20);
-    const sphereMat = new THREE.MeshStandardMaterial({
-      color: isLead ? 0xe5e7eb : 0x717680,
+    // Volumetric Voxel Block
+    const size = this.radius * 1.6;
+    const boxGeo = new THREE.BoxGeometry(size, size, size);
+    const boxMat = new THREE.MeshStandardMaterial({
+      color: isLead ? 0xe5e7eb : 0x6b7280,
       roughness: 0.35,
-      metalness: 0.4,
+      metalness: 0.45,
       wireframe: false
     });
 
-    const sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
-    sphereMesh.castShadow = true;
-    sphereMesh.receiveShadow = true;
-    group.add(sphereMesh);
+    const boxMesh = new THREE.Mesh(boxGeo, boxMat);
+    boxMesh.castShadow = true;
+    boxMesh.receiveShadow = true;
+    group.add(boxMesh);
 
-    // Subtle equatorial rings to visualize rolling rotation
-    const ringGeo = new THREE.RingGeometry(this.radius * 0.99, this.radius * 1.01, 24);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0x111315,
-      side: THREE.DoubleSide
-    });
-    const ringX = new THREE.Mesh(ringGeo, ringMat);
-    ringX.rotation.x = Math.PI / 2;
-    group.add(ringX);
+    // Inner contrasting voxel core
+    const coreGeo = new THREE.BoxGeometry(size * 1.01, size * 0.25, size * 0.25);
+    const coreMat = new THREE.MeshBasicMaterial({ color: 0x111315 });
+    const coreX = new THREE.Mesh(coreGeo, coreMat);
+    group.add(coreX);
 
-    const ringY = new THREE.Mesh(ringGeo, ringMat);
-    ringY.rotation.y = Math.PI / 2;
-    group.add(ringY);
+    const coreZ = new THREE.Mesh(new THREE.BoxGeometry(size * 0.25, size * 0.25, size * 1.01), coreMat);
+    group.add(coreZ);
 
     group.position.copy(this.position);
     return group;
